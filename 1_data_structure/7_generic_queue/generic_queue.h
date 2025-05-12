@@ -2,7 +2,12 @@
 #include <string.h>
 #include <stdbool.h>
 
-typedef struct GenericQueue GenericQueue;
+typedef struct {
+    void* buffer;
+    size_t elem_size;
+    size_t capacity;
+    size_t front, rear, size;
+} GenericQueue;
 
 int generic_queue_init(GenericQueue* q, size_t elem_size, size_t capacity);
 

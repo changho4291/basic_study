@@ -1,12 +1,5 @@
 #include "generic_queue.h"
 
-struct GenericQueue {
-    void* buffer;
-    size_t elem_size;
-    size_t capacity;
-    size_t front, rear, size;
-};
-
 int generic_queue_init(GenericQueue* q, size_t elem_size, size_t capacity) {
     q->buffer = malloc(elem_size * capacity);
     if (!q->buffer) { return 0; }
