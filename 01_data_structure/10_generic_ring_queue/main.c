@@ -17,7 +17,7 @@ int main(int argc, char const *argv[]) {
 
     int values[] = {11, 22, 33};
     for (int i = 0; i < 3; i++) {
-        pool_ring_queue_dequeue(&q, &values[i]);
+        pool_ring_queue_enqueue(&q, &values[i]);
     }
 
     int out;
