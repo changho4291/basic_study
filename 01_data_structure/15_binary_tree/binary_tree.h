@@ -15,8 +15,17 @@ TreeNode* bt_create(int value);
 // 노드 삽입 (BST 규칙)
 TreeNode* bt_insert(TreeNode* root, int value);
 
+// 노드 삭제
+TreeNode* bt_delete(TreeNode* root, int value);
+
 // 값 탐색
 bool bt_search(TreeNode* root, int value);
+
+// 전체 노드 수 반환
+int bt_count_nodes(TreeNode* root);
+
+// 잎 노드 수 반환
+int bt_count_leaves(TreeNode* root);
 
 // 순회
 void bt_inorder(TreeNode* root);

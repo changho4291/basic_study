@@ -9,6 +9,9 @@ int main(int argc, char const *argv[]) {
         root = bt_insert(root, values[i]);
     }
 
+    printf("전체 노드 수: %d\n", bt_count_nodes(root));
+    printf("잎 노드 수: %d\n", bt_count_leaves(root));
+
     printf("In-order: ");
     bt_inorder(root);
     printf("\n");
@@ -27,6 +30,15 @@ int main(int argc, char const *argv[]) {
     } else {
         printf("Not found: %d\n", search_val);
     }
+
+    // 삭제 테스트
+    root = bt_delete(root, 20); // Case 1: leaf
+    root = bt_delete(root, 30); // Case 2: one child
+    root = bt_delete(root, 50); // Case 3: two children
+
+    printf("삭제 후 트리 (in-order): ");
+    bt_inorder(root);
+    printf("\n");
 
     bt_free(root);
     return 0;
