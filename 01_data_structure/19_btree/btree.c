@@ -11,7 +11,13 @@ static BTreeNode* btree_create_node(int leaf) {
     return node;
 }
 
-// 노드 분할 (full child y -> split to y and z)
+/**
+ * @brief B-트리에서 가득 찬 자식 노드를 분할하고 부모 노드에 중간 키를 삽입
+ * 
+ * @param parent 분할 대상 자식 y를 포함하는 부모 노드
+ * @param idx    parent의 자식 포인터 배열에서 y의 위치 (즉, parent->children[idx] == y)
+ * @param y      가득 찬 노드 (2t - 1개의 키를 가진 상태) → 분할 대상
+ */
 static void btree_split_child(BTreeNode* parent, int idx, BTreeNode* y) {
     BTreeNode* z = btree_create_node(y->leaf);
     z->num_keys = MIN_DEGREE - 1;
