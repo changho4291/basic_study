@@ -1,8 +1,10 @@
 #include <stdio.h>
 
 int main(int argc, char const *argv[]) {
-    char id[51];
-    scanf("%s", id);
-    printf("%s\?\?!", id);
+    int buddhist;
+    int correction = 543;
+
+    scanf("%d", &buddhist);
+    printf("%d", buddhist - correction);
     return 0;
 }
