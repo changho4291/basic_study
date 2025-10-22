@@ -1,37 +1,34 @@
 #include <cstdio>
 #include <vector>
+#include <cstdint>
 
-int fibonacci(int n) {
+int fibonacci(int n, uint32_t& zero, uint32_t& one) {
     if (n == 0) {
+        zero++;
         return 0;
     } else if (n == 1) {
+        one++;
         return 1;
     } else {
-        return fibonacci(n-1) + fibonacci(n-2);
+        return fibonacci(n-1, zero, one) + fibonacci(n-2, zero, one);
     }
 }
 
 int main(int argc, char const *argv[]) {
     int t;
     scanf("%d", &t);
-    std::vector<int> zero_arr;
+    std::vector<uint32_t> zero_arr;
     zero_arr.reserve(t);
 
-    std::vector<int> one_arr;
+    std::vector<uint32_t> one_arr;
     one_arr.reserve(t);
     
     for (int i = 0; i < t; i++) {
         int n;
 
         scanf("%d", &n);
-        int zero = 0, one = 0;
 
-        if (fibonacci(n)) { one++;}
-        else { zero++; }
-
-        printf(" %d %d\n", zero, one);
-        zero_arr[i] = zero;
-        one_arr[i] = one;
+        fibonacci(n, zero_arr[i], one_arr[i]);
     }
 
     for (int i = 0; i < t; i++) {
