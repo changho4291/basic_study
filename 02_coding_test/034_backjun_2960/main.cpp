@@ -6,34 +6,31 @@ int main(int argc, char const *argv[]) {
     int n, k;
     scanf("%d %d", &n, &k);
 
-    int prime[500];
-    int ptr = 0;    // 소수 배열 증가
-    int cnt = 1;    // 삭제 순번 증가
-    prime[ptr++] = 2;
+    int cnt = 0;    // 삭제 순번 증가
 
-    for (int i = 2; i <= n; i++) {
-        int flag = 0;
-        for (int j = 0; prime[j] * prime[j] <= i; j++) {
-            if (i % prime[j] == 0) {   // 나누어 떨어지면 소수가 아님!
-                flag = 1;
-                break;
-            }
-        }
-        if (!flag) {
-            prime[ptr++] = i;
-            // TODO 여기에서 나눠야하네 그런데 그 조건을 다 찾으면
-            // 속도가 느려지지 않나??
-            cnt++;
-            printf("%d\n", i); 
-        }
+    // n이 1보다 작거나 같으면 종료
+    if (n <= 1) { return 0; }
 
-        if(cnt == k) { 
-            printf("%d\n", i);
-            break;
-        }
+    bool prime[1001];
+    for(int i = 0; i <= n; i++) {
+        prime[i] = true;
     }
 
-    // printf("소수의 수 %d", ptr);
+    for (int i = 2; i <= n; i++) {
+        if(prime[i]) {
+            cnt++;
+            if (cnt == k) { printf("%d\n", i); }
+
+            for(int j = i * i; j <= n; j += i) {
+                if(!prime[j]) { continue; }
+                cnt++;
+                prime[j] = false;
+                if (cnt == k) { printf("%d\n", j); }
+            }
+
+            if (cnt >= k) {break;}
+        }
+    }
 
     return 0;
 }
