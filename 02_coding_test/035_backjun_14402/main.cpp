@@ -3,11 +3,16 @@
 #include <vector>
 #include <cstring>
 
+typedef struct {
+    int count = 0;
+    char oper;
+} Worker;
+
 int main(int argc, char const *argv[]) {
     int q, cnt = 0;
     std::cin >> q;
 
-    std::map<std::string, std::vector<char>> records;
+    std::map<std::string, Worker> records;
 
     for (int i = 0; i < q; i++) {
         std::string name;
@@ -15,19 +20,18 @@ int main(int argc, char const *argv[]) {
 
         std::cin >> name >> oper;
 
-        if (records.find(name) != records.end()) {
-            char temp = records[name].back();
-            if(oper == '-') {
-                if (temp == '-') { cnt++; }
-                else { cnt--; }
-            } else { cnt++; }
-            records[name].push_back(oper);
-        } else {
-            records[name].push_back(oper);
+        if(records[name].count == 0){
+            records[name].count = 1;
             cnt++;
+        } else {
+            if(oper == '-') {
+                if (records[name].oper == '+') { cnt--; }
+                else { cnt++; }
+            } else { cnt++; }
         }
+        records[name].oper = oper;
     }
 
-    printf("%d\n", cnt);
+    std::cout << cnt << "\n";
     return 0;
 }

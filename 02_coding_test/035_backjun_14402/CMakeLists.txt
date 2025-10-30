@@ -11,4 +11,4 @@ add_executable(${PROJECT_NAME}
 	${SOURCES}
 )
 
-target_compile_features(${PROJECT_NAME} PRIVATE cxx_std_14)
+target_compile_features(${PROJECT_NAME} PRIVATE cxx_std_17)
