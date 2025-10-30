@@ -20,15 +20,18 @@ int main(int argc, char const *argv[]) {
 
         std::cin >> name >> oper;
 
-        if(records[name].count == 0){
-            records[name].count = 1;
-            cnt++;
+        if (oper == '-') {
+            if(records[name].count == 0) {
+                cnt++;
+            } else {
+                cnt--;
+                records[name].count--;
+            }
         } else {
-            if(oper == '-') {
-                if (records[name].oper == '+') { cnt--; }
-                else { cnt++; }
-            } else { cnt++; }
+            cnt++;
+            records[name].count++;
         }
+
         records[name].oper = oper;
     }
 
