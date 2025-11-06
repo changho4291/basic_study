@@ -10,15 +10,23 @@ bool two(int& num, int& cnt, const vector<uint32_t>& mins);
 // 3으로만 나눠지는거
 bool three(int& num, int& cnt, const vector<uint32_t>& mins) {
     if (num % 3 == 0) {
+
+        int tempCnt2 = cnt;
+        int tempNum2 = num;
+        two(tempNum2, tempCnt2, mins);
+
         num /= 3;
         if(num != 1) { 
             cnt = mins[num - 1]; 
             num = 1;
         }
         cnt++;
+
+        if (tempCnt2 < cnt) { cnt = tempCnt2; }
+
         return true;
     } else if (num % 3 == 1) {
-        // TODO NUM = 1 박기 전에 2로도 풀어봐야함!
+        // NUM = 1 박기 전에 2로도 풀어봐야함!
         int tempCnt = cnt;
         int tempNum = num;
         two(tempNum, tempCnt, mins);
@@ -82,10 +90,10 @@ int main(int argc, char const *argv[]) {
 
     cout << mins[N - 1] <<"\n";
 
-    for(auto& m : mins) {
-        cout << m << " ";
-    }
-    cout << "\n";
+    // for(auto& m : mins) {
+    //     cout << m << " ";
+    // }
+    // cout << "\n";
     return 0;
 }
 
