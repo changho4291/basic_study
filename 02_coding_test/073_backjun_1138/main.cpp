@@ -35,10 +35,12 @@ int main(int argc, char const *argv[]) {
     for (int i = 0; i < n; i++) {
         for (int j = i; j < n; j++) {
             if (people[j].second == n - hight) {
-                line[i] = people[j].first;
+                if (line[i] == 0) {
+                    line[i] = people[j].first;
+                } else {
+                     
+                }
                 break;
-            } else {
-
             }
         }
         hight--;
