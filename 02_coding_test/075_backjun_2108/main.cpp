@@ -14,17 +14,17 @@ int main(int argc, char const *argv[]) {
     int n, args = 0;
     cin >> n;
     vector<int> nums(n);
-    map<int, int> mins;
+    map<int, int> maxs;
 
     for(auto& i : nums) {
         cin >> i;
         args += i;
 
         // 최빈값 구하기 용도로 숫자 카운트
-        if(mins.find(i) == mins.end()) {
-            mins[i] = 1;
+        if(maxs.find(i) == maxs.end()) {
+            maxs[i] = 1;
         } else {
-            mins[i]++;
+            maxs[i]++;
         }
     }
 
@@ -32,7 +32,7 @@ int main(int argc, char const *argv[]) {
     sort(nums.begin(), nums.end());
     
     // 산술 평균
-    args = round(float(args / n));
+    args = round((float)args / n);
     cout << args << "\n";
     
     // 중앙값
@@ -41,12 +41,28 @@ int main(int argc, char const *argv[]) {
     // 최빈값을 구하기 위해 먼저 벡터 내의 중복 값을 제거
     nums.erase(unique(nums.begin(), nums.end()), nums.end());
 
-    // 최빈값, 여러 개 있을 때에는 최빈값 중 두 번째로 작은 값을 출력한다.
-    int minNum = 4001;
-    int minCnt = 50001;
+    // 최빈값 찾기 
+    int minNum = 0;
+    int maxCnt = 0;
     for (auto& i : nums) {
-        mins[i]
+        if (maxCnt < maxs[i]) {
+            minNum = i;
+            maxCnt = maxs[i];
+        }
     }
+
+    // 여러 개 있을 때에는 최빈값 중 두 번째로 작은 값을 출력한다.
+    for (int i = 0; i < nums.size(); i++) {
+        if (maxCnt == maxs[nums[i]] && minNum < nums[i]) {
+            minNum = nums[i];
+            break;
+        }
+    }
+
+    cout << minNum << "\n";
+
+    // 범위 출력
+    cout << *(nums.end() - 1) - nums[0] << "\n";
 
     return 0;
 }
