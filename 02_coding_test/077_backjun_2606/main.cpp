@@ -32,12 +32,23 @@ int main(int argc, char const *argv[]) {
     }
 
     dfs.push(1);
+    visited[0] = true;
 
     while(!dfs.empty()) {
         int current = dfs.top();
         dfs.pop();
+
+        for(auto& i : nodeMap[current]) {
+            // 이미 방문 했다면 나가리
+            if (visited[i - 1]) { continue; }
+
+            // 방문 하지 않았다면 방명록 작성 및 푸시 
+            visited[i - 1] = true;
+            dfs.push(i);
+            cnt++;  // 감염 카운트 증가
+        }
     }
     
-    
+    cout << cnt << "\n";
     return 0;
 }
