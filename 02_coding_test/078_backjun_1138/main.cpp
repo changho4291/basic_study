@@ -19,16 +19,15 @@ int main(int argc, char const *argv[]) {
     }
 
     for (int i = 0; i < n; i++) {
-        if (line[people[i]] == 0) {
-            line[people[i]] = i + 1;
-        } else {
-            int j = 1;
-            while (people[i] + j < n) {
-                if (line[people[i] + j] == 0) {
-                    line[people[i] + j] = i + 1;
+        int taller = people[i];  // 왼쪽에 있어야 하는 키 큰 사람 수
+        int cnt = 0;
+        for (int pos = 0; pos < n; ++pos) {
+            if (line[pos] == 0) {          // 빈 자리만 센다
+                if (cnt == taller) {       // 필요한 만큼 빈칸을 건너뛰었으면
+                    line[pos] = i + 1;     // 여기 앉는다 (키 = i+1)
                     break;
                 }
-                j++;
+                cnt++;
             }
         }
     }
@@ -36,7 +35,6 @@ int main(int argc, char const *argv[]) {
     for (auto& i : line) {
         cout << i << " ";
     }
-
     cout << "\n";
     
     return 0;
