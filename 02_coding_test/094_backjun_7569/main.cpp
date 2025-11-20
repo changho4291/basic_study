@@ -16,7 +16,11 @@ int main(int argc, char const *argv[]) {
     
     
     for (int i = 0; i < c; i++) {
-        
+        for (int j = 0; j < b; j++) {
+            for (int k = 0; k < a; k++) {
+                cin >> tomato[i][j][k];
+            }
+        }
     }
 
     return 0;
