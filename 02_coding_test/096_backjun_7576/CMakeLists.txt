@@ -1,7 +1,7 @@
 cmake_minimum_required( VERSION 3.28.3 )
 
 project(
-	backjun_1918
+	backjun_7576
     LANGUAGES C CXX
 )
 
