@@ -11,11 +11,17 @@ typedef struct {
     int depth;
 } node;
 
+bool inRange(int x1, int y1, int x2, int y2, int R) {
+    long long dx = x1 - x2;
+    long long dy = y1 - y2;
+    return dx*dx + dy*dy <= 1LL*R*R;
+}
+
 
 int main(int argc, char const *argv[]) {
-    cin.tie(0);
-    cout.tie(0);
-    ios_base::sync_with_stdio(0);
+    // cin.tie(0);
+    // cout.tie(0);
+    // ios_base::sync_with_stdio(0);
 
     int moveX[4] = {0, 1, 0, -1};
     int moveY[4] = {1, 0, -1, 0};
@@ -63,7 +69,8 @@ int main(int argc, char const *argv[]) {
                 int y = subCurrent.second + moveY[i];
 
                 if (x < 0 || y < 0 || x > maxX || y > maxY) { continue; }
-                if (abs(current.x - x) + abs(current.y - y) > r) { continue; }
+                // if (abs(current.x - x) + abs(current.y - y) > r) { continue; }
+                if (!inRange(current.x, current.y, x, y, r)) { continue; }
                 if (visited[x][y]) { continue; }
 
                 if (board[x][y] == 2) {
