@@ -1,9 +1,16 @@
 #include <iostream>
 #include <vector>
 #include <queue>
-#include <tuple>
+#include <cmath>
 
 using namespace std;
+
+typedef struct {
+    int x;
+    int y;
+    int depth;
+} node;
+
 
 int main(int argc, char const *argv[]) {
     cin.tie(0);
@@ -29,34 +36,51 @@ int main(int argc, char const *argv[]) {
     // 1은 적, 2는 타워
     vector<vector<int>> board(maxX + 1, vector<int>(maxY + 1, 0));
     vector<vector<bool>> visited(maxX + 1, vector<bool>(maxY + 1, false));
-    queue<tuple<int, int, int>> bfs;
+    queue<node> bfs;
 
     board[enumy.first][enumy.second] = 1;
-    bfs.push({enumy.first, enumy.second, 0});
+    bfs.push({enumy.first, enumy.second, -1});
     visited[enumy.first][enumy.second] = true;
 
     for (auto& t : towers) {
         board[t.first][t.second] = 2;
     }
     
+    float result = 0;
     while(!bfs.empty()) {
         auto current = bfs.front();
         bfs.pop();
+        queue<pair<int, int>> subBfs;
+        subBfs.push({current.x, current.y});
 
-        for(int i = 0; i < 4; i++) {
-            int x = get<0>(current) + moveX[i];
-            int y = get<1>(current) + moveY[i];
+        while(!subBfs.empty()) {
+            auto subCurrent = subBfs.front();
+            subBfs.pop();
 
-            if (x < 0 || y < 0 || x > maxX || y > maxY) { continue; }
-            if (visited[x][y]) { continue; }
 
-            if (board[x][y] == 2 && (get<2>(current) + 1) < r) {
-                bfs.push({x, y, 0});
-            } else {
-                bfs.push({x, y, get<2>(current) + 1});
+            for(int i = 0; i < 4; i++) {
+                int x = subCurrent.first + moveX[i];
+                int y = subCurrent.second + moveY[i];
+
+                if (x < 0 || y < 0 || x > maxX || y > maxY) { continue; }
+                if (abs(current.x - x) + abs(current.y - y) > r) { continue; }
+                if (visited[x][y]) { continue; }
+
+                if (board[x][y] == 2) {
+                    bfs.push({x, y, current.depth + 1});
+                    result += (float) d / (1 * pow(2, current.depth + 1));
+                    subBfs.push({x, y});
+                } else {
+                    subBfs.push({x, y});
+                }
+                visited[x][y] = true;
             }
         }
     }
+
+    cout << fixed;
+    cout.precision(5);
+    cout << result << "\n";
 
     return 0;
 }
