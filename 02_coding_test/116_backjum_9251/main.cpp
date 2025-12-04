@@ -1,5 +1,6 @@
 #include <iostream>
-#include <vector>
+#include <deque>
+#include <sstream>
 #include <algorithm>
 
 using namespace std;
@@ -16,55 +17,57 @@ int main(int argc, char const *argv[]) {
 
     for (int i = 0; i < t; i++) {
         cin >> command >> n >> arr;
-        vector<char> nums(n);
         
         // 배열 파싱
-        if (n > 0) { nums[0] = arr[1]; }
+        deque<string> nums(n);
+        string num;
         
-        for(int i = 1, j = 2; i < n; i++, j+=2) {
-            nums[i] = arr[1 + j];
+        arr.erase(0, 1);
+        arr.erase(arr.end() - 1);
+        stringstream sstream(arr);
+        
+        for (int i = 0; i < n; i++) {
+            getline(sstream, num, ',');
+            nums[i] = num;
         }
-        
-        // 커맨드 압축
-        vector<char> reCommand;
+
+        // 커맨드 실행
         int cntR = 0;
-        int cntD = 0;
-        char prevF = 0;
-        for (char& c : command) {
+        bool rFlag = false;
+        bool eFlag = false;
+        for(char& c : command) {
             if (c == 'R') {
                 cntR++;
+                rFlag ^= true;
             } else {
-                cntD++;
-                if (prevF == 'R') {
-                    if ( (cntR % 2) != 0) { reCommand.push_back('R'); }
-                    cntR = 0;
+                if (nums.empty()) {
+                    cout << "error\n";
+                    eFlag = true;
+                    break;
                 }
-                reCommand.push_back('D');
-            }
-            prevF = c;
-        }
 
-        if (cntR != 0) {
-            if ( (cntR % 2) != 0) { reCommand.push_back('R'); }
-        }
-
-        if (cntD > n) {
-            cout << "error\n";
-            continue;
-        }
-
-        for(char& c : reCommand) {
-            if (c == 'R') {
-                reverse(nums.begin(), nums.end());
-            } else {
-                nums.erase(nums.begin());
+                if(!rFlag) {
+                    nums.pop_front();
+                } else {
+                    nums.pop_back();
+                }
             }
         }
 
+        if (eFlag) { continue; }
+        
+        // 출력
         cout << "[";
-        for(int i = 0; i < nums.size(); i++) {
-            cout << nums[i];
-            if (i != nums.size() - 1) { cout <<","; }
+        if (cntR % 2 != 0) {
+            for(int i = nums.size()-1; i >= 0; i--) {
+                cout << nums[i];
+                if (i != 0) { cout <<","; }
+            }
+        } else {
+            for(int i = 0; i < nums.size(); i++) {
+                cout << nums[i];
+                if (i != nums.size() - 1) { cout <<","; }
+            }
         }
         cout << "]\n";
     }
