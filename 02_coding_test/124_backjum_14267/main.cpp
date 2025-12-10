@@ -3,8 +3,6 @@
 
 using namespace std;
 
-void callback(vector<vector<int>>& members, vector<int>& score, int member, int sc);
-
 int main(int argc, char const *argv[]) {
     int n, m;
     cin >> n >> m;
@@ -20,11 +18,19 @@ int main(int argc, char const *argv[]) {
         members[j].push_back(i);
     }
 
+    // 기본 점수 세팅
     for (int i = 0; i < m; i++) {
         int j, k;
         cin >> j >> k;
 
-        callback(members, score, j, k);
+        score[j - 1] += k;
+    }
+
+    // 내리사랑 시작
+    for (int i = 2; i <= n; i++) {
+        for(int& m : members[i]) {
+            score[m - 1] += score[i - 1];
+        }
     }
 
     for (int& s : score) {
@@ -33,11 +39,4 @@ int main(int argc, char const *argv[]) {
     cout << '\n';
     
     return 0;
-}
-
-void callback(vector<vector<int>>& members, vector<int>& score, int member, int sc) {
-    score[member - 1] += sc;
-    for (int& m : members[member]) {
-        callback(members, score, m, sc);
-    }
 }
