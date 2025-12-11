@@ -54,13 +54,8 @@ void backTrack(vector<vector<int>>& ability, Members& mem, int idx, int& min) {
         int ateam = 0, bteam = 0;
         for (int i = 0; i < (mem.n / 2); i++) {
             for (int j = i + 1; j < (mem.n / 2); j++) {
-                // cout << mem.arr[i] << " " << mem.arr[j] << " : " << bmember[i] << " " << bmember[j] << "\n";
-                // cout << ability[mem.arr[i] - 1][mem.arr[j] - 1] << " " << ability[mem.arr[j] - 1][mem.arr[i] - 1] 
-                //     << " : " << ability[bmember[i] - 1][bmember[j] - 1] << " " << ability[bmember[j] - 1][bmember[i] - 1] << "\n";
                 ateam += (ability[mem.arr[i] - 1][mem.arr[j] - 1] + ability[mem.arr[j] - 1][mem.arr[i] - 1]);
                 bteam += (ability[bmember[i] - 1][bmember[j] - 1] + ability[bmember[j] - 1][bmember[i] - 1]);
-
-                // cout << temp << "\n";
             }
         }
         
@@ -71,14 +66,6 @@ void backTrack(vector<vector<int>>& ability, Members& mem, int idx, int& min) {
         }
         
         if(min > temp) { min = temp; }
-        
-        // for (int i = 0; i < (mem.n / 2); i++) {
-        //     for (int j = i + 1; j < (mem.n / 2); j++) {
-        //         cout << bteam[i] << " " << bteam[j] << "\n";
-        //     }
-        // }
-
-        // cout << "\n";
         return;
     }
 
