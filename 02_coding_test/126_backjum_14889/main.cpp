@@ -9,7 +9,7 @@ typedef struct {
     vector<int> arr;
 } Members;
 
-void backTrack(vector<vector<int>>& ability, Members& mem, int idx, int& min);
+void backTrack(vector<vector<int>>& ability, Members& mem, int idx, int start, int& min);
 
 int main(int argc, char const *argv[]) {
     int n;
@@ -33,14 +33,14 @@ int main(int argc, char const *argv[]) {
     mem.isUsed[1] = true;
 
     int min = 100000000;
-    backTrack(ability, mem, 1, min);
+    backTrack(ability, mem, 1, 2, min);
 
     cout << min << "\n";
     
     return 0;
 }
 
-void backTrack(vector<vector<int>>& ability, Members& mem, int idx, int& min) {
+void backTrack(vector<vector<int>>& ability, Members& mem, int idx, int start, int& min) {
     if (idx == mem.m) {
         int bmember[mem.m];
         for (int i = 1, j = 0; i <= mem.n; i++) {
@@ -69,11 +69,11 @@ void backTrack(vector<vector<int>>& ability, Members& mem, int idx, int& min) {
         return;
     }
 
-    for (int i = 2; i <= mem.n; i++) {
+    for (int i = start; i <= mem.n; i++) {
         if (mem.isUsed[i]) { continue; }
         mem.isUsed[i] = true;
         mem.arr[idx] = i;
-        backTrack(ability, mem, idx + 1, min);
+        backTrack(ability, mem, idx + 1, i + 1, min);
         mem.isUsed[i] = false;
     }
 }
