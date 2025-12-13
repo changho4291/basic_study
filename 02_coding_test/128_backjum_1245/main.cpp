@@ -1,7 +1,6 @@
 #include <iostream>
 #include <vector>
 #include <stack>
-#include <tuple>
 
 using namespace std;
 
@@ -18,7 +17,7 @@ int main(int argc, char const *argv[]) {
 
     vector<vector<int>> parm(n, vector<int>(m));
     vector<vector<bool>> isVsited(n, vector<bool>(m, false));
-    stack<tuple<int, int, int, int>> dfs;
+    stack<pair<int, int>> dfs;
 
     for (auto& v : parm) {
         for (int& i : v) {
@@ -26,48 +25,42 @@ int main(int argc, char const *argv[]) {
         }
     }
 
-    dfs.push({0, 0, -1, 0});
-
-    // int pre = -1;
-    // int cur = 0;
+    dfs.push({0, 0});
 
     while (!dfs.empty()) {
         auto current = dfs.top();
         dfs.pop();
 
-        if (isVsited[get<0>(current)][get<1>(current)]) { continue; }
+        if (isVsited[current.first][current.second]) { continue; }
 
-        int next = parm[get<0>(current)][get<1>(current)];
-        if (next > get<3>(current) && get<2>(current) >= get<3>(current)) { cnt++; }
-
-        // cout << parm[current.first][current.second] << " " << pre << " " << cur << " " << next <<"\n";
-
-        get<2>(current) = get<3>(current);
-        get<3>(current) = next;
-
-        stack<tuple<int, int, int, int>> tmp_dfs;
+        stack<pair<int, int>> tmp_dfs;
         tmp_dfs.push(current);
 
+        int overHight = 0;
         while (!tmp_dfs.empty()) {
             auto tmp = tmp_dfs.top();
             tmp_dfs.pop();
 
-            if (isVsited[get<0>(tmp)][get<1>(tmp)]) { continue; }
-            isVsited[get<0>(tmp)][get<1>(tmp)] = true;
+            if (isVsited[tmp.first][tmp.second]) { continue; }
+            isVsited[tmp.first][tmp.second] = true;
 
             for (int i = 0; i < 8; i++) {
-                int x = get<0>(tmp) + moveX[i];
-                int y = get<1>(tmp) + moveY[i];
+                int x = tmp.first + moveX[i];
+                int y = tmp.second + moveY[i];
 
-                if (x < 0 || y < 0 || x >= n || y >= m || isVsited[x][y]) { continue; }
+                if (x < 0 || y < 0 || x >= n || y >= m) { continue; }
+                if (parm[tmp.first][tmp.second] < parm[x][y]) { overHight++; }
+                if (isVsited[x][y]) {continue;}
 
-                if (parm[x][y] == parm[get<0>(tmp)][get<1>(tmp)]) {
-                    tmp_dfs.push({x, y, get<2>(tmp), get<3>(tmp)});
+                if (parm[x][y] == parm[tmp.first][tmp.second]) {
+                    tmp_dfs.push({x, y});
                 } else {
-                    dfs.push({x, y, get<2>(tmp), get<3>(tmp)});
+                    dfs.push({x, y});
                 }
             }
+
         }
+        if(overHight == 0) { cnt++; }
     }
 
     cout << cnt << "\n";
