@@ -17,9 +17,9 @@ int chickenLen = 1000000;
 void solution(Data& data, int idx, int start);
 
 int main(int argc, char const *argv[]) {
-    // cin.tie(0);
-    // cout.tie(0);
-    // ios::sync_with_stdio(0);
+    cin.tie(0);
+    cout.tie(0);
+    ios::sync_with_stdio(0);
 
     int n, m, k;
     Data data;
@@ -53,21 +53,16 @@ void solution(Data& data, int idx, int start) {
             int minLen = 99999;
             for (auto& a : data.arr) {
                 int len = abs(h.first - data.chicken[a].first) + abs(h.second - data.chicken[a].second);
-                // cout << len << "\n";
                 minLen = min(minLen, len);
             }
-            // cout << minLen << "\n";
-            // if (tmpLen < minLen) { tmpLen = minLen; }
             tmpLen += minLen;
         }
-        // cout << tmpLen << "\n\n";
         chickenLen = min(chickenLen, tmpLen);
         return;
     }
 
     for (int i = start; i < data.chicken.size(); i++) {
         if (data.isUsed[i] == true) { continue; }
-        // cout << idx << " " << i << "\n";
         data.arr[idx] = i;
         data.isUsed[i] = true;
         solution(data, idx + 1, i + 1);
