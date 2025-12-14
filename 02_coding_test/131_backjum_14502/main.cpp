@@ -9,10 +9,7 @@ typedef struct {
     int n, m;
     int wallNum = 0;
     vector<vector<int>> lab;        // 연구소 지도
-    // vector<vector<bool>> isVisited; // 바이러스 전파
     vector<pair<int, int>> virus;   // 바이러스 위치
-    vector<int> arr;                // 조합 배열
-    // vector<bool> isUsed;            // 조합 사용 마킹
 } Data;
 
 int moveX[] = {0, 1, 0, -1};
@@ -33,9 +30,6 @@ int main(int argc, char const *argv[]) {
         .n = n,
         .m = m,
         .lab = vector<vector<int>>(n, vector<int>(m)),
-        // .isVisited = vector<vector<bool>>(n, vector<bool>(m, false)),
-        .arr = vector<int>(3),
-        // .isUsed = vector<bool>(n * m, false)
     };
 
     for (int i = 0; i < n; i++) {
@@ -47,9 +41,7 @@ int main(int argc, char const *argv[]) {
     }
 
     solution(data, 0, 0);
-
     cout << result << "\n";
-
     return 0;
 }
 
@@ -78,29 +70,12 @@ void solution(Data& data, int idx, int start) {
                 virus.push({x, y});
             }
         }
-        // cout << virusCnt << " " << data.wallNum << "\n";
+
         safe = safe - (virusCnt + data.wallNum + 3);
         result = max(result, safe);
 
-        // for(auto& v : data.lab) {
-        //     for(auto& i : v) {
-        //         cout << i << " ";
-        //     }
-        //     cout << "\n";
-        // }
-        // cout << "\n";
-
-        // for(auto& v : isVisited) {
-        //     for(auto&& i : v) {
-        //         cout << i << " ";
-        //     }
-        //     cout << "\n";
-        // }
-        // cout << "\n";
         return;
     }
-    
-    
     
     for(int i = start; i < data.n * data.m; i++) {
         int x = i / data.m;
@@ -108,7 +83,6 @@ void solution(Data& data, int idx, int start) {
 
         if (data.lab[x][y] != 0) { continue; }
 
-        data.arr[idx] = i;
         data.lab[x][y] = 1;
         solution(data, idx + 1, i + 1);
         data.lab[x][y] = 0;
