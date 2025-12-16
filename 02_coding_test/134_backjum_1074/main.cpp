@@ -1,10 +1,7 @@
 #include <iostream>
-#include <vector>
 #include <cmath>
 
 using namespace std;
-
-// vector<vector<int>> arr;
 
 int n, r, c;
 bool flag = false;
@@ -18,35 +15,22 @@ int main(int argc, char const *argv[]) {
     cout.tie(0);
 
     cin >> n >> r >> c;
-    // arr.resize((int)pow(2, n), vector<int>((int)pow(2, n)));
-
     callback(0, 0, 0, (int)pow(2, n) * (int)pow(2, n), (int)pow(2, n));
-
-    // cout << arr[r][c] << "\n";
     
     return 0;
 }
 
 void callback(int x, int y, int start, int size, int len) {
-    if (flag) { return; }
+    if (x > r || y > c || x + len <= r || y + len <= c) { return; }
 
     if (size / 4 == 1) {
-        int a = ((x + 2) - r);
-        int b = ((y + 2) - c);
-    
-        if (a > 4 || b > 4 || a <= 0 || b <= 0) { return; } 
-        cout << start + sumarr[a][b] << "\n";
-        flag = true;
-        
-        // for (int i = 0; i < 2; i++) {
-        //     for (int j = 0; j < 2; j++) {
-        //         if (x + i == r && y + j == c) {
-        //             cout << start + sumarr[i][j] << "\n";
-        //             flag = true;
-        //         }
-        //     }
-        // }
-
+        for (int i = 0; i < 2; i++) {
+            for (int j = 0; j < 2; j++) {
+                if (x + i == r && y + j == c) {
+                    cout << start + sumarr[i][j] << "\n";
+                }
+            }
+        }
         return;
     }
 
