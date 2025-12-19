@@ -7,9 +7,10 @@ using namespace std;
 typedef struct {
     int x; 
     int y;
-    int d; 
-    char s;
+    int d;
 } Data;
+
+void back(vector<vector<char>>& board, int startX, int startY);
 
 int main () {
     cin.tie(0);
@@ -26,13 +27,15 @@ int main () {
     vector<vector<bool>> isVisited(n, vector<bool>(m, false));
     queue<Data> bfs;
 
-    for(auto& v : board) {
-        for (char& c : v) {
-            cin >> c;
+    for(int i = 0; i < n; i++) {
+        for (int j = 0; j < m; j++) {
+            cin >> board[i][j];
         }
     }
 
-    bfs.push({0, 0, 1, '1'});
+    
+
+    bfs.push({0, 0, 1});
     isVisited[0][0] = true;
 
     while (!bfs.empty()) {
@@ -44,22 +47,22 @@ int main () {
             int y = current.y + moveY[i];
 
             if (x < 0 || y < 0 || x >= n || y >= m) { continue; }
-            if (isVisited[x][y] || ((board[x][y] == '1') && (current.s == '0')) ) { continue; }
+            if (isVisited[x][y] || (board[x][y] == '1')) { continue; }
             
             if ((x == n -1) && (y == m-1)) {
                 cout << current.d + 1 << "\n";
                 return 0;
             }
 
-            if (board[x][y] == '1') {
-                bfs.push({x, y, current.d + 1, '0'});
-            } else {
-                bfs.push({x, y, current.d + 1, current.s});
-            }
+            bfs.push({x, y, current.d + 1});
             isVisited[x][y] = true;
         }
     }
     cout << "-1\n";
 
     return 0;
+}
+
+void back(vector<vector<char>>& board, int startX, int startY) {
+
 }
