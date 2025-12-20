@@ -7,7 +7,8 @@ using namespace std;
 typedef struct {
     int x; 
     int y;
-    int d;
+    int d;  // 순회 깊이
+    bool b;  // 벽을 부쉈는지
 } Data;
 
 int main () {
@@ -21,54 +22,53 @@ int main () {
     int n, m;
     cin >> n >> m;
 
-    vector<vector<char>> board(n, vector<char>(m, 0));
-    vector<pair<int, int>> walls;
-    queue<Data> bfs;
+    vector<vector<int>> board(n, vector<int>(m));
+    vector<vector<vector<bool>>> isVisited(n, vector<vector<bool>>(m, vector<bool>(1, false)));
 
+    queue<Data> bfs;
+    
     for(int i = 0; i < n; i++) {
         for (int j = 0; j < m; j++) {
-            cin >> board[i][j];
-            if (board[i][j] == '1') {
-                walls.push_back({i, j});
-            }
+            char t;
+            cin >> t;
+            board[i][j] = t - '0';
         }
     }
 
-    int result = -1;
-    for (auto& w : walls) {
-        board[w.first][w.second] = '0';
-        vector<vector<bool>> isVisited(n, vector<bool>(m, false));
-        bfs.push({0, 0, 1});
-        isVisited[0][0] = true;
-
-        bool isRun = true;
-        while (!bfs.empty()) {
-            auto current = bfs.front();
-            bfs.pop();
-
-            for (int i = 0; i < 4; i++) {
-                int x = current.x + moveX[i];
-                int y = current.y + moveY[i];
-
-                if (x < 0 || y < 0 || x >= n || y >= m) { continue; }
-                if (isVisited[x][y] || (board[x][y] == '1')) { continue; }
-                
-                if ((x == n -1) && (y == m-1)) {
-                    if ( (result == -1) || result > current.d + 1 ) { result = current.d + 1; }
-                    isRun = false;
-                    break;
-                }
-
-                bfs.push({x, y, current.d + 1});
-                isVisited[x][y] = true;
-            }
-
-            if(!isRun) { break; }
-        }
-        board[w.first][w.second] = '1';
+    if (n == 1 && m == 1) { 
+        cout << "1\n"; 
+        return 0;
     }
 
-    cout << result << "\n";
+    bfs.push({0, 0, 1, 0});
+    isVisited[0][0][0] = true;
+
+    while (!bfs.empty()) {
+        auto current = bfs.front();
+        bfs.pop();
+
+        for (int i = 0; i < 4; i++) {
+            int x = current.x + moveX[i];
+            int y = current.y + moveY[i];
+
+            if (x < 0 || y < 0 || x >= n || y >= m) { continue; }
+            if (isVisited[x][y][current.b] || ((board[x][y] != 0) && (current.b != 0)) ) { continue; }
+            
+            if ((x == n -1) && (y == m-1)) {
+                cout << current.d + 1 << "\n";
+                return 0;
+            }
+
+            if (board[x][y] != 0) {
+                bfs.push({x, y, current.d + 1, true});
+                isVisited[x][y][true] = true;
+            } else {
+                bfs.push({x, y, current.d + 1, current.b});
+                isVisited[x][y][current.b] = true;
+            }
+        }
+    }
+    cout << "-1\n";
 
     return 0;
 }
