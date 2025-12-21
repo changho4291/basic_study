@@ -34,6 +34,12 @@ int main () {
         }
     }
 
+    for (int i = 0; i < n; i++) {
+        for (int j = 0; j < n; j++) {
+            if (floydTable[i][j] == INF) { floydTable[i][j] = 0; }
+        }
+    }
+
     for (auto& v : floydTable) {
         for (auto& i : v) {
             cout << i << " ";
