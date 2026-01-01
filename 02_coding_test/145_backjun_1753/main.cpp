@@ -32,7 +32,7 @@ int main(int argc, char const *argv[]) {
     while (!pque.empty()) {
         auto [f, s] = pque.top();
         pque.pop();
-        if (f != path_value[s]) { continue; }
+        if (f != path_value[s]) { continue; }   // 기록된 최단 거리와 같지 않다면..진행하지 않는다.
 
         for(auto& [no, val] : graph[s]) {
             uint64_t tmp = f + val;
