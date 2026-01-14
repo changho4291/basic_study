@@ -17,7 +17,7 @@ int main(int argc, char const *argv[]) {
 
     cin >> r >> c;
     vector<string> board(r, string(c, ' '));
-    vector<vector<vector<bool>>> isVisited(r,  vector<vector<bool>>(c, vector<bool>(26, false)));
+    vector<vector<uint32_t>> isVisited(r,  vector<uint32_t>(c, 0));
     queue<Data> bfs;
 
     int moveX[] = {0, 1, 0, -1};
@@ -30,7 +30,7 @@ int main(int argc, char const *argv[]) {
     }
 
     bfs.push({0, 0, 1, (uint32_t)(1 << (board[0][0] - 'A'))});
-    isVisited[0][0][board[0][0] - 'A'] = true;
+    isVisited[0][0] |= (uint32_t)(1 << (board[0][0] - 'A'));
 
     int result = 0;
     while (!bfs.empty()) {
@@ -42,7 +42,7 @@ int main(int argc, char const *argv[]) {
             int y = current.y + moveY[i];
 
             if (x < 0 || y < 0 || x >= r || y >= r) { continue; }
-            if (isVisited[x][y][board[x][y] - 'A']) { continue; }
+            if (isVisited[x][y] & current.alpahFlag) { continue; }
 
             uint32_t tmp = current.alpahFlag;
             tmp |= (uint32_t)(1 << (board[x][y] - 'A'));
