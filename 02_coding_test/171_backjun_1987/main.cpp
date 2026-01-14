@@ -1,7 +1,7 @@
 #include <iostream>
 #include <vector>
 #include <queue>
-#include <cstdint>
+#include <cstring>
 
 using namespace std;
 
@@ -9,7 +9,7 @@ typedef struct {
     int x;
     int y;
     int cnt;
-    uint32_t alpahFlag;
+    bool alphaUsed[26] = {false, };
 } Data;
 
 int main(int argc, char const *argv[]) {
@@ -17,7 +17,8 @@ int main(int argc, char const *argv[]) {
 
     cin >> r >> c;
     vector<string> board(r, string(c, ' '));
-    vector<vector<uint32_t>> isVisited(r,  vector<uint32_t>(c, 0));
+    // vector<vector<bool>> isVisited(r, vector<bool>(c, false));
+    // vector<bool> alphaUsed(26, false);
     queue<Data> bfs;
 
     int moveX[] = {0, 1, 0, -1};
@@ -28,28 +29,49 @@ int main(int argc, char const *argv[]) {
             cin >> board[i][j];
         }
     }
+    
 
-    bfs.push({0, 0, 1, (uint32_t)(1 << (board[0][0] - 'A'))});
-    isVisited[0][0] |= (uint32_t)(1 << (board[0][0] - 'A'));
+    Data first = {
+        .x = 0,
+        .y = 0,
+        .cnt = 1,
+    };
+    first.alphaUsed[board[0][0] - 'A'] = true;
+    bfs.push(first);
+    // isVisited[0][0] = true;
+    // alphaUsed[board[0][0] - 'A'] = true;
 
     int result = 0;
     while (!bfs.empty()) {
         auto current = bfs.front();
         bfs.pop();
 
+        // for (int j = 0; j < 26; j++) {
+        //     cout << current.alphaUsed[j] << " ";
+        // }
+        // cout << "\n";
+
+        // int stop;
+        // cin >> stop;
+
         for (int i = 0; i < 4; i++) {
             int x = current.x + moveX[i];
             int y = current.y + moveY[i];
 
             if (x < 0 || y < 0 || x >= r || y >= r) { continue; }
-            if (isVisited[x][y] & current.alpahFlag) { continue; }
+            if (current.alphaUsed[board[x][y] - 'A']) { continue; }
+            // if (alphaUsed[board[x][y] - 'A'] || isVisited[x][y]) { continue; }
 
-            uint32_t tmp = current.alpahFlag;
-            tmp |= (uint32_t)(1 << (board[x][y] - 'A'));
 
-            bfs.push({x, y, current.cnt + 1, tmp});
-            isVisited[x][y] = true;
-            alphaUsed[board[x][y] - 'A'] = true;
+            Data input = {
+                .x = x,
+                .y = y,
+                .cnt = current.cnt + 1,
+            };
+            memcpy(input.alphaUsed, current.alphaUsed, 26);
+            input.alphaUsed[board[x][y] - 'A'] = true;
+            bfs.push(input);
+            // isVisited[x][y] = true;
             result = current.cnt + 1;
         }
     }
@@ -57,4 +79,3 @@ int main(int argc, char const *argv[]) {
     cout << result << "\n";
     return 0;
 }
-
