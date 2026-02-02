@@ -5,11 +5,9 @@
 using namespace std;
 
 typedef struct {
-    int size;
     int x;
     int y;
     int moveCnt;
-    int eatCnt;
 } Shark;
 
 int main(int argc, char const *argv[]) {
@@ -23,81 +21,73 @@ int main(int argc, char const *argv[]) {
     cin >> n;
 
     vector<vector<int>> map(n, vector<int>(n));
-    vector<vector<bool>> visited(n, vector<bool>(n, false));
     queue<Shark> bfs;
 
     // 디버깅용
     vector<vector<int>> traking(n, vector<int>(n, 0));
     int secno = 1;
 
+    int startX, startY, size = 2, eatCnt = 0;
+    int result = 0;
     // 맵 설정
     for (int i = 0; i < n; i++) {
         for (int j = 0; j < n; j++) {
             cin >> map[i][j];
             if (map[i][j] == 9) {
-                bfs.push({2, i, j, 0, 0});
-                visited[i][j] = true;
+                
+                startX = i;
+                startY = j;
                 map[i][j] = 0;
             }
         }
     }
 
-    int result = 0;
-    while (!bfs.empty()) {
-        Shark current = bfs.front();
-        bfs.pop();
+    while (true) {
+        vector<vector<bool>> visited(n, vector<bool>(n, false));
+        bfs.push({startX, startY, 0});
 
-        for (int i = 0; i < 4; i++) {
-            int size = current.size;
-            int x = current.x + moveX[i];
-            int y = current.y + moveY[i];
-            int eat = current.eatCnt;
+        int bestD = 1 << 30;
+        int bestX = -1, bestY = -1;
 
-            if (x < 0 || y < 0 || x >= n || y >= n || map[x][y] > size || visited[x][y]) { continue; }
+        while (!bfs.empty()) {
+            Shark current = bfs.front();
+            bfs.pop();
 
-            // 먹이를 찾았을때
-            if (map[x][y] != 0 && size > map[x][y]) { 
-                map[x][y] = 0; 
-                ++eat;
-                if (eat == size) {
-                    eat = 0;
-                    size++;
-                }
+            for (int i = 0; i < 4; i++) {
+                int x = current.x + moveX[i];
+                int y = current.y + moveY[i];
+                int d = current.moveCnt + 1;
 
-                for (int i = 0; i < n; i++) {
-                    for (int j = 0; j < n; j++) { visited[i][j] = false; }
-                }
-                while (!bfs.empty()) { bfs.pop(); }
+                if (x < 0 || y < 0 || x >= n || y >= n || map[x][y] > size || visited[x][y]) { continue; }
 
-                bfs.push({size, x, y, current.moveCnt + 1, eat});
-                visited[x][y] = true;
-                
-                result = current.moveCnt + 1;
-                traking[x][y] = current.moveCnt + 1;
-
-                cout << "\n";
-                for (int i = 0; i < n; i++) {
-                    for (int j = 0; j < n; j++) {
-                        cout.width(3);
-                        if (i == x && j == y) {
-                            cout << "S";
-                        } else {
-                            cout << map[i][j];
-                        }
+                // 먹이를 찾았을때
+                if (map[x][y] != 0 && size > map[x][y]) { 
+                    if (d < bestD || (d == bestD && (x < bestX || (x == bestX && y < bestY)))) { 
+                        bestD = d; 
+                        bestX = x;
+                        bestY = y;
                     }
-                    cout << "\n";
                 }
 
-                cout << "secno: " << secno++ << " x: " << x << " y: " << y << " eat: " << eat << " size: " << size << " move: " << current.moveCnt + 1 << "\n";
-                
-                break;
+                bfs.push({x, y, d});
+                visited[x][y] = true;
+                traking[x][y] = d;
             }
+        }
 
-            bfs.push({size, x, y, current.moveCnt + 1, eat});
-            visited[x][y] = true;
-            traking[x][y] = current.moveCnt + 1;
+        if (bestX == -1) break;
+
+        result += bestD;
+        startX = bestX;
+        startY = bestY;
+        map[bestX][bestY] = 0;
+        eatCnt++;
+        if (eatCnt == size) {
+            size++;
+            eatCnt = 0;
         }
     }
+    
     
     cout << result << "\n";
 
