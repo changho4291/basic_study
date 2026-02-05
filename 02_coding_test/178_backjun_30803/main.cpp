@@ -20,7 +20,6 @@ int main(int argc, char const *argv[]) {
     }
 
     cout << r << "\n";
-    r = 0;
 
     int q, c, i, x;
     cin >> q;
@@ -32,20 +31,18 @@ int main(int argc, char const *argv[]) {
             cin >> i;
             isUse[i-1] = !isUse[i-1];
 
-            for(int k = 0; k < n; k++) { 
-                if (isUse[k]) { r += a[k]; }
-            }
+            if (isUse[i-1]) { r += a[i-1]; }
+            else { r -= a[i-1]; }
             cout << r << "\n";
-            r = 0;
         } else {
             cin >> i >> x;
+            int tmp = a[i - 1];
             a[i - 1] = x;
 
-            for(int k = 0; k < n; k++) { 
-                if (isUse[k]) { r += a[k]; }
+            if (isUse[i-1]) { 
+                r += (a[i-1] - tmp);
             }
             cout << r << "\n";
-            r = 0;
         }
     }
 
