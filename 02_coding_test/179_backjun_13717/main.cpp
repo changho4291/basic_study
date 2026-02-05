@@ -22,10 +22,13 @@ int main(int argc, char const *argv[]) {
     int totalEvolution = 0;
     for (auto& p : pokemons) {
         cin >> p.name >> p.need >> p.have;
+        int evolution = 0;
 
-        int evolution = (p.have / p.need);
-        p.have = (p.have - (evolution * p.need)) + (evolution * 2);
-        evolution += (p.have / p.need);
+        while (p.have >= p.need) {
+            int t = (p.have / p.need);
+            p.have = (p.have - (t * p.need)) + (t * 2);
+            evolution += t;
+        }
         totalEvolution += evolution;
 
         if (evolution > goatNum) {
