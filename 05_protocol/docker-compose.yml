@@ -1,0 +1,9 @@
+services:
+  server:
+    image: linear-cctv-vms-server-dev
+    container_name: study_gSoap
+    stdin_open: true
+    tty: true
+    working_dir: /workspace
+    volumes:
+      - .:/workspace

@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions name="calc"
+  targetNamespace="http://example.com/calc.wsdl"
+  xmlns:tns="http://example.com/calc.wsdl"
+  xmlns:SOAP-ENV="http://schemas.xmlsoap.org/soap/envelope/"
+  xmlns:SOAP-ENC="http://schemas.xmlsoap.org/soap/encoding/"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+  xmlns:ns="http://example.com/calc.wsdl"
+  xmlns:SOAP="http://schemas.xmlsoap.org/wsdl/soap/"
+  xmlns:HTTP="http://schemas.xmlsoap.org/wsdl/http/"
+  xmlns:MIME="http://schemas.xmlsoap.org/wsdl/mime/"
+  xmlns:DIME="http://schemas.xmlsoap.org/ws/2002/04/dime/wsdl/"
+  xmlns:WSDL="http://schemas.xmlsoap.org/wsdl/"
+  xmlns="http://schemas.xmlsoap.org/wsdl/">
+
+<types>
+
+  <schema targetNamespace="http://example.com/calc.wsdl"
+    xmlns:SOAP-ENV="http://schemas.xmlsoap.org/soap/envelope/"
+    xmlns:SOAP-ENC="http://schemas.xmlsoap.org/soap/encoding/"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+    xmlns:ns="http://example.com/calc.wsdl"
+    xmlns="http://www.w3.org/2001/XMLSchema"
+    elementFormDefault="unqualified"
+    attributeFormDefault="unqualified">
+    <import namespace="http://schemas.xmlsoap.org/soap/encoding/"/>
+  </schema>
+
+</types>
+
+<message name="AddRequest">
+  <part name="a" type="xsd:int"/><!-- ns__Add::a -->
+  <part name="b" type="xsd:int"/><!-- ns__Add::b -->
+</message>
+
+<message name="AddResponse">
+  <part name="result" type="xsd:int"/><!-- ns__Add::result -->
+</message>
+
+<portType name="calcPortType">
+  <operation name="Add">
+    <documentation>Service definition of function ns__Add</documentation>
+    <input message="tns:AddRequest"/>
+    <output message="tns:AddResponse"/>
+  </operation>
+</portType>
+
+<binding name="calc" type="tns:calcPortType">
+  <SOAP:binding style="rpc" transport="http://schemas.xmlsoap.org/soap/http"/>
+  <operation name="Add">
+    <SOAP:operation style="rpc" soapAction=""/>
+    <input>
+          <SOAP:body use="encoded" encodingStyle="http://schemas.xmlsoap.org/soap/encoding/" namespace="http://example.com/calc.wsdl"/>
+    </input>
+    <output>
+          <SOAP:body use="encoded" encodingStyle="http://schemas.xmlsoap.org/soap/encoding/" namespace="http://example.com/calc.wsdl"/>
+    </output>
+  </operation>
+</binding>
+
+<service name="calc">
+  <documentation>gSOAP 2.8.132 generated service definition</documentation>
+  <port name="calc" binding="tns:calc">
+    <SOAP:address location="http://localhost:8080"/>
+  </port>
+</service>
+
+</definitions>
