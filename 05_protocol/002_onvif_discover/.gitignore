@@ -1,0 +1,17 @@
+discover
+responder
+build/
+sent_probe.xml
+recv_probe.xml
+responder_sent.xml
+responder_recv.xml
+soapH.h
+soapStub.h
+soapC.cpp
+soapClient.cpp
+soapClientLib.cpp
+wsdd.nsmap
+soap.nsmap
+soap*.xml
+*.req.xml
+*.res.xml

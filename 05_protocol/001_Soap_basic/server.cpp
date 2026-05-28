@@ -15,8 +15,7 @@ int main() {
 
     soap_init(&soap);
 
-    int master =
-        soap_bind(&soap,nullptr, 8080, 100);
+    int master = soap_bind(&soap, nullptr, 8080, 100);
 
     if(master < 0) {
         soap_print_fault(&soap,stderr);
