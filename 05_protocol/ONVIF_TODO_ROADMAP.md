@@ -72,17 +72,21 @@ Notes:
 
 ## 003_onvif_device_info
 
-Status: Pending
+Status: In Progress
 
 Goal: 발견한 ONVIF 장비의 Device Service에 SOAP 요청을 보낸다.
 
-- [ ] README만 보고 재현 가능하도록 실습 문서 작성
-- [ ] `XAddrs`를 endpoint로 사용
-- [ ] Device Management WSDL/header 준비 방식 결정
-- [ ] `soapcpp2` generated code 생성 흐름 정리
-- [ ] `GetDeviceInformation` 요청 구현
-- [ ] 제조사, 모델명, 펌웨어 버전, serial number 출력
-- [ ] SOAP Fault 발생 시 fault code/message 출력
+- [x] README만 보고 재현 가능하도록 실습 문서 작성
+- [x] `XAddrs`를 endpoint로 사용
+- [x] Device Management WSDL/header 준비 방식 결정
+- [x] 최소 `onvif_device.h`에서 `GetDeviceInformation` contract 작성
+- [x] `soapcpp2` generated code 생성 흐름 정리
+- [x] `GetDeviceInformation` 요청 구현
+- [x] 학습용 fake ONVIF Device Service 구현
+- [x] 제조사, 모델명, 펌웨어 버전, serial number 출력
+- [x] SOAP Fault 발생 시 fault code/message 출력
+- [ ] 실제 ONVIF 장비에서 `GetDeviceInformationResponse` 수신 확인
+- [ ] 인증이 필요한 장비의 실패 응답을 다음 단계 입력으로 기록
 
 Expected output:
 
