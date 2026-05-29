@@ -37,6 +37,12 @@ Goal: WS-Discovery로 네트워크의 ONVIF 장비를 찾는다.
 - [x] 학습용 WS-Discovery responder 구현
 - [x] responder의 `wsdd_event_Probe()`에서 `soap_wsdd_add_ProbeMatch()`로 ProbeMatches 생성
 - [x] local unicast endpoint `soap.udp://127.0.0.1:3702`로 `discover -> responder -> ProbeMatches` 왕복 검증
+- [x] `Resolve / ResolveMatches` 추가 실습 구현
+- [x] responder의 `wsdd_event_Resolve()`에서 ResolveMatches 응답 생성
+- [x] `discover --resolve <EndpointReference>`로 Resolve 왕복 검증
+- [x] `Hello / Bye` 개념 확인용 monitor 구현
+- [x] responder 시작/종료 시 `soap_wsdd_Hello()` / `soap_wsdd_Bye()` 전송 구현
+- [x] `monitor -> responder --announce`로 Hello/Bye 수신 검증
 - [x] `wsddapi.h`, `wsddapi.c`, `wsaapi.c`, generated files의 참고 위치 README에 정리
 - [x] `soapcpp2 + g++` 수동 빌드 흐름 README에 정리
 - [x] README 코드와 실제 `client.cpp` 동기화
@@ -60,6 +66,7 @@ Notes:
 - 이 단계는 raw XML 하드코딩이 아니라 gSOAP `wsddapi` plugin 기반으로 진행한다.
 - `soapcpp2` generated code와 gSOAP plugin이 어떤 식으로 결합되는지 확인한다.
 - 실제 장비가 없어도 responder를 함께 실행해서 Probe/ProbeMatches 왕복을 실습한다.
+- Resolve/ResolveMatches와 Hello/Bye도 로컬 unicast 기반으로 재현한다.
 - 컨테이너 multicast loopback은 환경에 따라 동작하지 않을 수 있으므로 local round trip은 unicast endpoint로 검증한다.
 - 이 단계에서 얻은 `XAddrs`가 다음 Device Service 호출의 endpoint가 된다.
 

@@ -1,44 +1,107 @@
 # 002_onvif_discover
 
-gSOAP의 WS-Discovery 플러그인을 사용해서 ONVIF 장비를 찾는 실습이다.
+gSOAP `wsddapi` plugin으로 ONVIF WS-Discovery를 실습한다.
 
-이번 단계의 목적은 `make`나 CMake 사용법이 아니라, gSOAP 기반 ONVIF discovery가 어떤 파일 생성/컴파일 흐름으로 동작하는지 직접 확인하는 것이다.
-
-```text
-onvif_discover.h
-  -> soapcpp2
-  -> soapH.h / soapC.cpp / soapClient.cpp / wsdd.nsmap
-  -> client.cpp와 함께 g++ 빌드
-  -> soap_wsdd_Probe()
-  -> soap_wsdd_listen()
-  -> wsdd_event_ProbeMatches()
-```
-
-이 실습은 두 바이너리로 구성한다.
+이번 실습은 세 역할로 구성한다.
 
 ```text
-discover   : WS-Discovery Probe를 보내는 client
-responder  : Probe를 받고 ProbeMatches를 돌려주는 가짜 ONVIF Target Service
+discover   : Probe / Resolve를 보내는 discovery client
+responder  : Probe / Resolve에 응답하는 fake ONVIF Target Service
+monitor    : Hello / Bye passive event를 관찰하는 listener
 ```
+
+## What Changed In This Update
+
+이번 수정에서 기존 `Probe / ProbeMatches` 실습에 아래 기능을 추가했다.
+
+```text
+client.cpp
+  -> --resolve 옵션 추가
+  -> soap_wsdd_Resolve() 호출 경로 추가
+  -> wsdd_event_ResolveMatches()에서 ResolveMatches 출력
+
+responder.cpp
+  -> --announce 옵션 추가
+  -> soap_wsdd_Hello() / soap_wsdd_Bye() 전송 함수 추가
+  -> wsdd_event_Resolve()에서 ResolveMatch 응답 생성
+
+monitor.cpp
+  -> 새 파일
+  -> Hello / Bye 이벤트를 수신해서 출력하는 passive listener
+
+.gitignore
+  -> monitor 실행 파일과 monitor_recv.xml 로그 제외
+
+ONVIF_TODO_ROADMAP.md
+  -> Resolve / Hello / Bye 실습 완료 항목 추가
+```
+
+즉 현재 `002_onvif_discover`는 ONVIF WS-Discovery의 네 가지 메시지 흐름을 로컬에서 확인하는 단계다.
+
+```text
+Probe    -> ProbeMatches     : "ONVIF 장비 있나?"
+Resolve  -> ResolveMatches   : "이 EndpointReference 장비의 주소를 알려줘"
+Hello                       : "장비가 네트워크에 나타남"
+Bye                         : "장비가 네트워크에서 사라짐"
+```
+
+## Probe vs Resolve
+
+`Probe`와 `Resolve`는 둘 다 WS-Discovery 요청이지만 질문의 성격이 다르다.
+
+```text
+Probe   : 조건에 맞는 장비를 찾아달라는 검색 요청
+Resolve : 이미 알고 있는 EndpointReference의 접속 주소를 알려달라는 조회 요청
+```
+
+`Probe`는 "네트워크에 ONVIF NetworkVideoTransmitter 장비가 있으면 응답해라"에 가깝다. client는 장비의 고유 ID를 모르는 상태에서 `Types`, `Scopes` 같은 검색 조건을 보낸다. responder 또는 실제 ONVIF 장비는 조건이 맞으면 `ProbeMatches`로 응답한다.
+
+```text
+client
+  -> Probe(Types = dn:NetworkVideoTransmitter)
+device
+  -> ProbeMatches(EndpointReference, Types, Scopes, XAddrs, MetadataVersion)
+```
+
+이 실습에서는 `client.cpp`가 아래 API로 Probe를 보낸다.
+
+```cpp
+soap_wsdd_Probe(..., kOnvifDeviceType, nullptr, nullptr);
+```
+
+그리고 `responder.cpp`는 `wsdd_event_Probe()` callback에서 type을 확인한 뒤 `soap_wsdd_add_ProbeMatch()`로 응답 내용을 채운다.
+
+`Resolve`는 "이 EndpointReference를 가진 장비의 실제 접속 주소가 뭐냐"에 가깝다. client는 이미 `EndpointReference`를 알고 있어야 한다. 장비는 그 ID가 자기 것과 일치하면 `ResolveMatches`로 `XAddrs`를 돌려준다.
+
+```text
+client
+  -> Resolve(EndpointReference = urn:uuid:...)
+device
+  -> ResolveMatches(EndpointReference, Types, Scopes, XAddrs, MetadataVersion)
+```
+
+이 실습에서는 `discover --resolve <EndpointReference>`를 주면 `client.cpp`가 아래 API를 호출한다.
+
+```cpp
+soap_wsdd_Resolve(..., options.resolve_endpoint_reference);
+```
+
+그리고 `responder.cpp`는 `wsdd_event_Resolve()` callback에서 요청의 `EndpointReference`가 `kEndpointReference`와 같은지 비교한 뒤, 맞으면 `wsdd__ResolveMatchType` 구조체를 직접 채운다.
+
+정리하면 보통 흐름은 아래와 같다.
+
+```text
+1. Probe로 조건에 맞는 장비 목록을 찾는다.
+2. ProbeMatches에서 EndpointReference와 XAddrs를 얻는다.
+3. 필요하면 EndpointReference로 Resolve를 보내 최신 XAddrs를 다시 확인한다.
+4. 최종적으로 XAddrs를 사용해서 ONVIF Device Service 요청을 보낸다.
+```
+
+이 실습만 놓고 보면 `ProbeMatches`에도 이미 `XAddrs`가 들어 있으므로 `Resolve`가 꼭 필요해 보이지 않을 수 있다. 그래도 `Resolve`는 WS-Discovery의 별도 메시지 흐름이고, EndpointReference 기반 조회가 어떻게 동작하는지 확인하기 위해 따로 구현했다.
 
 ## Environment
 
 현재 host에는 `soapcpp2`, `wsdl2h`가 없고, `05_protocol/docker-compose.yml`의 `server` 컨테이너 안에 gSOAP 도구가 있다.
-
-확인된 컨테이너 내부 경로:
-
-```text
-/usr/bin/soapcpp2
-/usr/bin/wsdl2h
-/usr/share/gsoap/import/wsdd.h
-/usr/share/gsoap/plugin/wsddapi.c
-/usr/share/gsoap/plugin/wsddapi.h
-/usr/share/gsoap/plugin/wsaapi.c
-/usr/share/gsoap/plugin/threads.c
-/usr/include/stdsoap2.h
-```
-
-따라서 아래 실습은 컨테이너 안에서 진행한다.
 
 ```bash
 cd 05_protocol
@@ -47,38 +110,53 @@ docker compose exec server bash
 cd /workspace/002_onvif_discover
 ```
 
-## Files To Write
-
-소스가 하나도 없다고 가정하면 아래 세 파일을 직접 만든다.
+확인된 주요 경로:
 
 ```text
-002_onvif_discover/
-  onvif_discover.h
-  client.cpp
-  responder.cpp
+/usr/bin/soapcpp2
+/usr/share/gsoap/import/wsdd.h
+/usr/share/gsoap/plugin/wsddapi.h
+/usr/share/gsoap/plugin/wsddapi.c
+/usr/share/gsoap/plugin/wsaapi.c
+/usr/share/gsoap/plugin/threads.c
+```
+
+## Files
+
+직접 작성하는 파일:
+
+```text
+onvif_discover.h
+client.cpp
+responder.cpp
+monitor.cpp
+```
+
+`soapcpp2`가 생성하는 파일:
+
+```text
+soapH.h
+soapStub.h
+soapC.cpp
+soapClient.cpp
+soapClientLib.cpp
+wsdd.nsmap
+wsdd.*.req.xml
 ```
 
 ## onvif_discover.h
 
-`soapcpp2`의 입력 파일이다.
+`soapcpp2` 입력 파일이다.
 
 ```cpp
-// gSOAP input file for WS-Discovery.
-//
-// This imports the gSOAP-provided WS-Discovery schema header.
-// Run `soapcpp2` on this file to generate soapH.h, soapC.cpp,
-// soapClient.cpp, and the namespace map used by client.cpp.
-
 #import "wsdd.h"
 ```
 
-중요한 점:
+`wsdd.h`는 gSOAP가 제공하는 WS-Discovery schema header이며 `/usr/share/gsoap/import/wsdd.h`에 있다.
 
-- `wsdd.h`는 gSOAP가 제공하는 WS-Discovery schema header다.
-- 이 파일은 `/usr/share/gsoap/import/wsdd.h`에 있다.
-- ONVIF discovery는 WS-Discovery를 사용하므로 여기서 시작한다.
+## discover
 
-## client.cpp
+Source: `client.cpp`
 
 Role:
 
@@ -86,18 +164,19 @@ Role:
 WS-Discovery client
   -> Probe 전송
   -> ProbeMatches 수신
-  -> 발견한 EndpointReference / Types / Scopes / XAddrs 출력
+  -> Resolve 전송
+  -> ResolveMatches 수신
 ```
 
 Important callbacks:
 
 ```text
-wsdd_event_ProbeMatches  : responder 또는 실제 ONVIF 장비의 응답 처리
-wsdd_event_Hello         : 이 실습에서는 no-op
-wsdd_event_Bye           : 이 실습에서는 no-op
-wsdd_event_Probe         : 이 실습에서는 no-op
-wsdd_event_Resolve       : 이 실습에서는 no-op
-wsdd_event_ResolveMatches: 이 실습에서는 no-op
+wsdd_event_ProbeMatches   : ProbeMatches 응답 처리
+wsdd_event_ResolveMatches : ResolveMatches 응답 처리
+wsdd_event_Hello          : no-op
+wsdd_event_Bye            : no-op
+wsdd_event_Probe          : no-op
+wsdd_event_Resolve        : no-op
 ```
 
 Runtime flow:
@@ -105,9 +184,17 @@ Runtime flow:
 ```text
 soap_new1(SOAP_IO_UDP)
   -> soap_bind(..., port 0)
-  -> soap_wsdd_Probe(...)
+  -> soap_wsdd_Probe(...) or soap_wsdd_Resolve(...)
   -> soap_wsdd_listen(...)
-  -> wsdd_event_ProbeMatches(...)
+  -> wsdd_event_ProbeMatches(...) or wsdd_event_ResolveMatches(...)
+```
+
+Options:
+
+```text
+--timeout seconds
+--endpoint soap.udp://host:port
+--resolve endpoint-reference
 ```
 
 Logs:
@@ -117,310 +204,27 @@ sent_probe.xml
 recv_probe.xml
 ```
 
-```cpp
-#include <cstdio>
-#include <cstdlib>
-#include <cstring>
+## responder
 
-#include <sys/socket.h>
-
-#include "soapH.h"
-#include "wsdd.nsmap"
-#include "plugin/wsddapi.h"
-
-namespace {
-
-// WS-Discovery uses UDP multicast on 239.255.255.250:3702.
-// gSOAP expresses UDP endpoints with the "soap.udp://" scheme.
-constexpr const char* kDiscoveryEndpoint = "soap.udp://239.255.255.250:3702";
-
-// ONVIF video devices are discovered as NetworkVideoTransmitter.
-// The "dn" prefix is provided by the generated wsdd.nsmap namespace table.
-constexpr const char* kOnvifDeviceType = "dn:NetworkVideoTransmitter";
-
-struct DiscoveryState {
-    int matches = 0;
-};
-
-struct Options {
-    int timeout = 5;
-    const char* endpoint = kDiscoveryEndpoint;
-};
-
-void print_text(const char* label, const char* value) {
-    std::printf("%s: %s\n", label, value != nullptr ? value : "-");
-}
-
-Options parse_options(int argc, char** argv) {
-    Options options;
-
-    for (int i = 1; i < argc; ++i) {
-        if (std::strcmp(argv[i], "--timeout") == 0 && i + 1 < argc) {
-            const int timeout = std::atoi(argv[++i]);
-            options.timeout = timeout > 0 ? timeout : options.timeout;
-        } else if (std::strcmp(argv[i], "--endpoint") == 0 && i + 1 < argc) {
-            options.endpoint = argv[++i];
-        } else {
-            std::printf("Usage: %s [--timeout seconds] [--endpoint soap.udp://host:port]\n", argv[0]);
-            std::exit(1);
-        }
-    }
-
-    return options;
-}
-
-}  // namespace
-
-// Client-side callback invoked by gSOAP's WS-Discovery plugin when a
-// ProbeMatches message is received. The required signature is declared in
-// /usr/share/gsoap/plugin/wsddapi.h.
-void wsdd_event_ProbeMatches(
-    struct soap* soap,
-    unsigned int InstanceId,
-    const char* SequenceId,
-    unsigned int MessageNumber,
-    const char* MessageID,
-    const char* RelatesTo,
-    struct wsdd__ProbeMatchesType* matches) {
-    (void)InstanceId;
-    (void)SequenceId;
-    (void)MessageNumber;
-    (void)MessageID;
-    (void)RelatesTo;
-
-    auto* state = static_cast<DiscoveryState*>(soap->user);
-
-    for (int i = 0; matches != nullptr && i < matches->__sizeProbeMatch; ++i) {
-        const wsdd__ProbeMatchType& match = matches->ProbeMatch[i];
-
-        if (state != nullptr) {
-            ++state->matches;
-            std::printf("\nFound ONVIF device #%d\n", state->matches);
-        } else {
-            std::printf("\nFound ONVIF device\n");
-        }
-
-        print_text("EndpointReference", match.wsa5__EndpointReference.Address);
-        print_text("Types", match.Types);
-        print_text("Scopes", match.Scopes != nullptr ? match.Scopes->__item : nullptr);
-        print_text("XAddrs", match.XAddrs);
-        std::printf("MetadataVersion: %u\n", match.MetadataVersion);
-    }
-}
-
-// The WS-Discovery plugin requires the application to define all wsdd_event_*
-// handlers. This discovery client only cares about ProbeMatches, so the
-// remaining handlers are intentionally no-op implementations.
-void wsdd_event_Hello(
-    struct soap* soap,
-    unsigned int InstanceId,
-    const char* SequenceId,
-    unsigned int MessageNumber,
-    const char* MessageID,
-    const char* RelatesTo,
-    const char* EndpointReference,
-    const char* Types,
-    const char* Scopes,
-    const char* MatchBy,
-    const char* XAddrs,
-    unsigned int MetadataVersion) {
-    (void)soap;
-    (void)InstanceId;
-    (void)SequenceId;
-    (void)MessageNumber;
-    (void)MessageID;
-    (void)RelatesTo;
-    (void)EndpointReference;
-    (void)Types;
-    (void)Scopes;
-    (void)MatchBy;
-    (void)XAddrs;
-    (void)MetadataVersion;
-}
-
-void wsdd_event_Bye(
-    struct soap* soap,
-    unsigned int InstanceId,
-    const char* SequenceId,
-    unsigned int MessageNumber,
-    const char* MessageID,
-    const char* RelatesTo,
-    const char* EndpointReference,
-    const char* Types,
-    const char* Scopes,
-    const char* MatchBy,
-    const char* XAddrs,
-    unsigned int* MetadataVersion) {
-    (void)soap;
-    (void)InstanceId;
-    (void)SequenceId;
-    (void)MessageNumber;
-    (void)MessageID;
-    (void)RelatesTo;
-    (void)EndpointReference;
-    (void)Types;
-    (void)Scopes;
-    (void)MatchBy;
-    (void)XAddrs;
-    (void)MetadataVersion;
-}
-
-soap_wsdd_mode wsdd_event_Probe(
-    struct soap* soap,
-    const char* MessageID,
-    const char* ReplyTo,
-    const char* Types,
-    const char* Scopes,
-    const char* MatchBy,
-    struct wsdd__ProbeMatchesType* matches) {
-    (void)soap;
-    (void)MessageID;
-    (void)ReplyTo;
-    (void)Types;
-    (void)Scopes;
-    (void)MatchBy;
-    (void)matches;
-    return SOAP_WSDD_ADHOC;
-}
-
-soap_wsdd_mode wsdd_event_Resolve(
-    struct soap* soap,
-    const char* MessageID,
-    const char* ReplyTo,
-    const char* EndpointReference,
-    struct wsdd__ResolveMatchType* match) {
-    (void)soap;
-    (void)MessageID;
-    (void)ReplyTo;
-    (void)EndpointReference;
-    (void)match;
-    return SOAP_WSDD_ADHOC;
-}
-
-void wsdd_event_ResolveMatches(
-    struct soap* soap,
-    unsigned int InstanceId,
-    const char* SequenceId,
-    unsigned int MessageNumber,
-    const char* MessageID,
-    const char* RelatesTo,
-    struct wsdd__ResolveMatchType* match) {
-    (void)soap;
-    (void)InstanceId;
-    (void)SequenceId;
-    (void)MessageNumber;
-    (void)MessageID;
-    (void)RelatesTo;
-    (void)match;
-}
-
-int main(int argc, char** argv) {
-    const Options options = parse_options(argc, argv);
-    DiscoveryState state;
-
-    // WS-Discovery is SOAP over UDP, so the gSOAP context must be UDP-enabled.
-    soap* soap = soap_new1(SOAP_IO_UDP);
-    if (soap == nullptr) {
-        std::fprintf(stderr, "soap_new1 failed\n");
-        return 1;
-    }
-
-    // soap->user is passed back to wsdd_event_* callbacks.
-    soap->user = &state;
-    soap->bind_flags = SO_REUSEADDR;
-    soap->connect_flags = SO_BROADCAST;
-    soap->connect_timeout = options.timeout;
-    soap->recv_timeout = options.timeout;
-
-    // namespaces is generated into wsdd.nsmap by soapcpp2.
-    soap_set_namespaces(soap, namespaces);
-
-    // These logs are useful for comparing generated SOAP XML with ONVIF specs.
-    soap_set_sent_logfile(soap, "sent_probe.xml");
-    soap_set_recv_logfile(soap, "recv_probe.xml");
-
-    // Bind an ephemeral local UDP port so ProbeMatches responses can be received.
-    if (!soap_valid_socket(soap_bind(soap, nullptr, 0, 100))) {
-        soap_print_fault(soap, stderr);
-        soap_destroy(soap);
-        soap_end(soap);
-        soap_free(soap);
-        return 1;
-    }
-
-    const char* message_id = soap_wsa_rand_uuid(soap);
-
-    std::printf("Send WS-Discovery Probe\n");
-    std::printf("Endpoint: %s\n", options.endpoint);
-    std::printf("Types: %s\n", kOnvifDeviceType);
-    std::printf("MessageID: %s\n", message_id);
-    std::fflush(stdout);
-
-    // Send WS-Discovery Probe to target services in ad-hoc multicast mode.
-    // Implementation: /usr/share/gsoap/plugin/wsddapi.c::soap_wsdd_Probe
-    if (soap_wsdd_Probe(
-            soap,
-            SOAP_WSDD_ADHOC,
-            SOAP_WSDD_TO_TS,
-            options.endpoint,
-            message_id,
-            nullptr,
-            kOnvifDeviceType,
-            nullptr,
-            nullptr) != SOAP_OK) {
-        soap_print_fault(soap, stderr);
-        soap_destroy(soap);
-        soap_end(soap);
-        soap_free(soap);
-        return 1;
-    }
-
-    std::printf("Wait ProbeMatches for %d seconds...\n", options.timeout);
-    std::fflush(stdout);
-
-    // Listen for WS-Discovery responses. When ProbeMatches is received,
-    // wsddapi.c dispatches it to wsdd_event_ProbeMatches above.
-    if (soap_wsdd_listen(soap, options.timeout) != SOAP_OK) {
-        soap_print_fault(soap, stderr);
-    }
-
-    if (state.matches == 0) {
-        std::printf("\nNo ONVIF device found.\n");
-    }
-
-    std::printf("\nSent log: sent_probe.xml\n");
-    std::printf("Recv log: recv_probe.xml\n");
-
-    soap_destroy(soap);
-    soap_end(soap);
-    soap_free(soap);
-    return 0;
-}
-```
-
-주의: 위 코드에서 `soap_wsdd_Probe()`의 `Types` 인자로 들어가는 값은 `dn:NetworkVideoTransmitter`다. 이 값이 ONVIF Network Video Transmitter 장비를 찾겠다는 의미다.
-
-## responder.cpp
+Source: `responder.cpp`
 
 Role:
 
 ```text
 WS-Discovery Target Service simulator
   -> Probe 수신
-  -> Probe type 확인
-  -> ProbeMatches 생성
-  -> client로 응답
+  -> ProbeMatches 응답
+  -> Resolve 수신
+  -> ResolveMatches 응답
+  -> Hello 전송
+  -> Bye 전송
 ```
 
 Important callbacks:
 
 ```text
-wsdd_event_Probe         : client의 Probe 요청 처리
-wsdd_event_ProbeMatches  : 이 실습에서는 no-op
-wsdd_event_Hello         : 이 실습에서는 no-op
-wsdd_event_Bye           : 이 실습에서는 no-op
-wsdd_event_Resolve       : 이 실습에서는 no-op
-wsdd_event_ResolveMatches: 이 실습에서는 no-op
+wsdd_event_Probe   : Probe 요청을 받고 soap_wsdd_add_ProbeMatch()로 응답 구성
+wsdd_event_Resolve : Resolve 요청을 받고 ResolveMatch 구조체 채움
 ```
 
 Runtime flow:
@@ -429,10 +233,27 @@ Runtime flow:
 soap_new1(SOAP_IO_UDP)
   -> soap_bind(..., port 3702)
   -> IP_ADD_MEMBERSHIP 239.255.255.250
+  -> optional soap_wsdd_Hello(...)
   -> soap_wsdd_listen(...)
-  -> wsdd_event_Probe(...)
-  -> soap_wsdd_add_ProbeMatch(...)
-  -> return SOAP_WSDD_MANAGED
+  -> wsdd_event_Probe(...) or wsdd_event_Resolve(...)
+  -> optional soap_wsdd_Bye(...)
+```
+
+Options:
+
+```text
+--timeout seconds
+--announce soap.udp://host:port
+```
+
+Advertised values:
+
+```text
+EndpointReference: urn:uuid:11111111-2222-3333-4444-555555555555
+Types: dn:NetworkVideoTransmitter
+Scopes: onvif://www.onvif.org/Profile/Streaming onvif://www.onvif.org/name/StudyDevice
+XAddrs: http://127.0.0.1/onvif/device_service
+MetadataVersion: 1
 ```
 
 Logs:
@@ -442,323 +263,294 @@ responder_sent.xml
 responder_recv.xml
 ```
 
-Source:
+## monitor
+
+Source: `monitor.cpp`
+
+Role:
+
+```text
+WS-Discovery passive event monitor
+  -> Hello 수신
+  -> Bye 수신
+```
+
+Important callbacks:
+
+```text
+wsdd_event_Hello : Target Service가 네트워크에 등장했음을 처리
+wsdd_event_Bye   : Target Service가 네트워크에서 사라짐을 처리
+```
+
+Runtime flow:
+
+```text
+soap_new1(SOAP_IO_UDP)
+  -> soap_bind(..., monitor port)
+  -> optional IP_ADD_MEMBERSHIP
+  -> soap_wsdd_listen(...)
+  -> wsdd_event_Hello(...) / wsdd_event_Bye(...)
+```
+
+Options:
+
+```text
+--port port
+--timeout seconds
+--join-multicast
+```
+
+Logs:
+
+```text
+monitor_recv.xml
+```
+
+## How To Write This Code
+
+gSOAP `wsddapi` 기반 코드는 직접 XML 문자열을 만드는 방식이 아니다. 작성 순서는 항상 아래처럼 잡는다.
+
+```text
+1. onvif_discover.h에서 wsdd.h import
+2. soapcpp2로 WS-Discovery 타입과 stub 생성
+3. 애플리케이션 코드에서 soap_new1(SOAP_IO_UDP)로 UDP SOAP context 생성
+4. soap_set_namespaces(soap, namespaces)로 generated namespace map 연결
+5. soap_wsdd_* API로 메시지 전송
+6. wsdd_event_* callback을 구현해서 수신 메시지 처리
+7. soap_destroy / soap_end / soap_free로 정리
+```
+
+### 1. gSOAP 입력 파일
+
+직접 작성하는 gSOAP 입력은 아주 작다.
 
 ```cpp
-#include <arpa/inet.h>
-#include <netinet/in.h>
-#include <sys/socket.h>
-#include <unistd.h>
+#import "wsdd.h"
+```
 
-#include <cstdio>
-#include <cstdlib>
-#include <cstring>
+`wsdd.h` 안에 WS-Discovery 메시지 타입과 gSOAP용 선언이 들어 있다. 이 파일을 import한 뒤 `soapcpp2`를 실행하면 `soapH.h`, `soapC.cpp`, `soapClient.cpp`, `wsdd.nsmap` 같은 generated file이 생긴다.
 
+### 2. 공통 include
+
+`client.cpp`, `responder.cpp`, `monitor.cpp`는 공통으로 아래 파일을 포함한다.
+
+```cpp
 #include "soapH.h"
 #include "wsdd.nsmap"
 #include "plugin/wsddapi.h"
-
-namespace {
-
-constexpr int kDiscoveryPort = 3702;
-constexpr const char* kMulticastAddress = "239.255.255.250";
-constexpr const char* kEndpointReference = "urn:uuid:11111111-2222-3333-4444-555555555555";
-constexpr const char* kTypes = "dn:NetworkVideoTransmitter";
-constexpr const char* kScopes =
-    "onvif://www.onvif.org/Profile/Streaming "
-    "onvif://www.onvif.org/name/StudyDevice";
-constexpr const char* kXAddrs = "http://127.0.0.1/onvif/device_service";
-constexpr unsigned int kMetadataVersion = 1;
-
-int parse_timeout(int argc, char** argv) {
-    if (argc == 1) {
-        return 60;
-    }
-
-    if (argc == 3 && std::strcmp(argv[1], "--timeout") == 0) {
-        const int timeout = std::atoi(argv[2]);
-        return timeout > 0 ? timeout : 60;
-    }
-
-    std::printf("Usage: %s [--timeout seconds]\n", argv[0]);
-    std::exit(1);
-}
-
-bool join_multicast_group(int sock) {
-    ip_mreq mreq {};
-    mreq.imr_multiaddr.s_addr = inet_addr(kMulticastAddress);
-    mreq.imr_interface.s_addr = htonl(INADDR_ANY);
-
-    if (setsockopt(sock, IPPROTO_IP, IP_ADD_MEMBERSHIP, &mreq, sizeof(mreq)) < 0) {
-        std::perror("setsockopt IP_ADD_MEMBERSHIP failed");
-        return false;
-    }
-
-    return true;
-}
-
-}  // namespace
-
-void wsdd_event_Hello(
-    struct soap* soap,
-    unsigned int InstanceId,
-    const char* SequenceId,
-    unsigned int MessageNumber,
-    const char* MessageID,
-    const char* RelatesTo,
-    const char* EndpointReference,
-    const char* Types,
-    const char* Scopes,
-    const char* MatchBy,
-    const char* XAddrs,
-    unsigned int MetadataVersion) {
-    (void)soap;
-    (void)InstanceId;
-    (void)SequenceId;
-    (void)MessageNumber;
-    (void)MessageID;
-    (void)RelatesTo;
-    (void)EndpointReference;
-    (void)Types;
-    (void)Scopes;
-    (void)MatchBy;
-    (void)XAddrs;
-    (void)MetadataVersion;
-}
-
-void wsdd_event_Bye(
-    struct soap* soap,
-    unsigned int InstanceId,
-    const char* SequenceId,
-    unsigned int MessageNumber,
-    const char* MessageID,
-    const char* RelatesTo,
-    const char* EndpointReference,
-    const char* Types,
-    const char* Scopes,
-    const char* MatchBy,
-    const char* XAddrs,
-    unsigned int* MetadataVersion) {
-    (void)soap;
-    (void)InstanceId;
-    (void)SequenceId;
-    (void)MessageNumber;
-    (void)MessageID;
-    (void)RelatesTo;
-    (void)EndpointReference;
-    (void)Types;
-    (void)Scopes;
-    (void)MatchBy;
-    (void)XAddrs;
-    (void)MetadataVersion;
-}
-
-// Server-side callback invoked by wsddapi.c when a Probe request arrives.
-// The handler decides whether this target service matches and fills matches.
-soap_wsdd_mode wsdd_event_Probe(
-    struct soap* soap,
-    const char* MessageID,
-    const char* ReplyTo,
-    const char* Types,
-    const char* Scopes,
-    const char* MatchBy,
-    struct wsdd__ProbeMatchesType* matches) {
-    (void)ReplyTo;
-    (void)Scopes;
-    (void)MatchBy;
-
-    std::printf("\nReceived Probe\n");
-    std::printf("MessageID: %s\n", MessageID != nullptr ? MessageID : "-");
-    std::printf("Types: %s\n", Types != nullptr ? Types : "-");
-
-    const bool type_matches =
-        Types == nullptr ||
-        std::strstr(Types, "dn:NetworkVideoTransmitter") != nullptr ||
-        std::strstr(Types, "NetworkVideoTransmitter") != nullptr;
-
-    if (!type_matches) {
-        std::printf("Ignore Probe: type does not match this target service\n");
-        return SOAP_WSDD_MANAGED;
-    }
-
-    if (soap_wsdd_add_ProbeMatch(
-            soap,
-            matches,
-            kEndpointReference,
-            kTypes,
-            kScopes,
-            nullptr,
-            kXAddrs,
-            kMetadataVersion) != SOAP_OK) {
-        soap_print_fault(soap, stderr);
-    }
-
-    std::printf("Send ProbeMatches\n");
-    std::printf("EndpointReference: %s\n", kEndpointReference);
-    std::printf("Types: %s\n", kTypes);
-    std::printf("Scopes: %s\n", kScopes);
-    std::printf("XAddrs: %s\n", kXAddrs);
-    std::fflush(stdout);
-
-    // Returning MANAGED lets wsddapi.c send the ProbeMatches response using
-    // the matches populated above.
-    return SOAP_WSDD_MANAGED;
-}
-
-void wsdd_event_ProbeMatches(
-    struct soap* soap,
-    unsigned int InstanceId,
-    const char* SequenceId,
-    unsigned int MessageNumber,
-    const char* MessageID,
-    const char* RelatesTo,
-    struct wsdd__ProbeMatchesType* matches) {
-    (void)soap;
-    (void)InstanceId;
-    (void)SequenceId;
-    (void)MessageNumber;
-    (void)MessageID;
-    (void)RelatesTo;
-    (void)matches;
-}
-
-soap_wsdd_mode wsdd_event_Resolve(
-    struct soap* soap,
-    const char* MessageID,
-    const char* ReplyTo,
-    const char* EndpointReference,
-    struct wsdd__ResolveMatchType* match) {
-    (void)soap;
-    (void)MessageID;
-    (void)ReplyTo;
-    (void)EndpointReference;
-    (void)match;
-    return SOAP_WSDD_ADHOC;
-}
-
-void wsdd_event_ResolveMatches(
-    struct soap* soap,
-    unsigned int InstanceId,
-    const char* SequenceId,
-    unsigned int MessageNumber,
-    const char* MessageID,
-    const char* RelatesTo,
-    struct wsdd__ResolveMatchType* match) {
-    (void)soap;
-    (void)InstanceId;
-    (void)SequenceId;
-    (void)MessageNumber;
-    (void)MessageID;
-    (void)RelatesTo;
-    (void)match;
-}
-
-int main(int argc, char** argv) {
-    const int timeout = parse_timeout(argc, argv);
-
-    soap* soap = soap_new1(SOAP_IO_UDP);
-    if (soap == nullptr) {
-        std::fprintf(stderr, "soap_new1 failed\n");
-        return 1;
-    }
-
-    soap->bind_flags = SO_REUSEADDR;
-    soap->connect_flags = SO_BROADCAST;
-    soap->accept_timeout = timeout;
-    soap->recv_timeout = timeout;
-    soap->send_timeout = timeout;
-    soap_set_namespaces(soap, namespaces);
-    soap_set_sent_logfile(soap, "responder_sent.xml");
-    soap_set_recv_logfile(soap, "responder_recv.xml");
-
-    const int master = soap_bind(soap, nullptr, kDiscoveryPort, 100);
-    if (!soap_valid_socket(master)) {
-        soap_print_fault(soap, stderr);
-        soap_destroy(soap);
-        soap_end(soap);
-        soap_free(soap);
-        return 1;
-    }
-
-    if (!join_multicast_group(master)) {
-        soap_destroy(soap);
-        soap_end(soap);
-        soap_free(soap);
-        return 1;
-    }
-
-    std::printf("WS-Discovery responder listening on %s:%d for %d seconds\n",
-                kMulticastAddress,
-                kDiscoveryPort,
-                timeout);
-    std::printf("Advertised XAddrs: %s\n", kXAddrs);
-    std::fflush(stdout);
-
-    if (soap_wsdd_listen(soap, timeout) != SOAP_OK) {
-        soap_print_fault(soap, stderr);
-    }
-
-    std::printf("\nResponder finished\n");
-    std::printf("Sent log: responder_sent.xml\n");
-    std::printf("Recv log: responder_recv.xml\n");
-
-    soap_destroy(soap);
-    soap_end(soap);
-    soap_free(soap);
-    return 0;
-}
 ```
 
-Core response values:
+- `soapH.h`: `soapcpp2`가 만든 WS-Discovery 타입 선언
+- `wsdd.nsmap`: namespace prefix mapping
+- `wsddapi.h`: `soap_wsdd_Probe`, `soap_wsdd_Resolve`, `soap_wsdd_listen`, callback signature 선언
+
+### 3. client.cpp 작성 방식
+
+client는 요청을 보내고 응답 callback에서 결과를 출력한다.
 
 ```text
-EndpointReference: urn:uuid:11111111-2222-3333-4444-555555555555
-Types: dn:NetworkVideoTransmitter
-Scopes: onvif://www.onvif.org/Profile/Streaming onvif://www.onvif.org/name/StudyDevice
-XAddrs: http://127.0.0.1/onvif/device_service
-MetadataVersion: 1
+main()
+  -> Options 파싱
+  -> soap_new1(SOAP_IO_UDP)
+  -> soap_bind(..., port 0)
+  -> soap_wsa_rand_uuid()
+  -> soap_wsdd_Probe() 또는 soap_wsdd_Resolve()
+  -> soap_wsdd_listen()
+  -> wsdd_event_ProbeMatches() 또는 wsdd_event_ResolveMatches()
 ```
 
-중요한 함수는 `wsdd_event_Probe()`다.
+`--resolve`가 없으면 Probe를 보낸다.
 
 ```cpp
-soap_wsdd_mode wsdd_event_Probe(
-    struct soap* soap,
-    const char* MessageID,
-    const char* ReplyTo,
-    const char* Types,
-    const char* Scopes,
-    const char* MatchBy,
-    struct wsdd__ProbeMatchesType* matches)
+soap_wsdd_Probe(
+    soap,
+    SOAP_WSDD_ADHOC,
+    SOAP_WSDD_TO_TS,
+    options.endpoint,
+    message_id,
+    nullptr,
+    kOnvifDeviceType,
+    nullptr,
+    nullptr);
 ```
 
-`wsddapi.c`는 Probe를 받으면 이 callback을 호출한다.
+`--resolve <EndpointReference>`가 있으면 Resolve를 보낸다.
 
-responder는 이 callback 안에서 `soap_wsdd_add_ProbeMatch()`로 응답 내용을 채운다.
+```cpp
+soap_wsdd_Resolve(
+    soap,
+    SOAP_WSDD_ADHOC,
+    SOAP_WSDD_TO_TS,
+    options.endpoint,
+    message_id,
+    nullptr,
+    options.resolve_endpoint_reference);
+```
+
+응답은 직접 `recvfrom()`으로 받지 않는다. `soap_wsdd_listen()`이 UDP 메시지를 받고, 메시지 종류에 맞는 callback을 호출한다.
+
+```cpp
+void wsdd_event_ProbeMatches(..., wsdd__ProbeMatchesType* matches)
+{
+    for (int i = 0; matches != nullptr && i < matches->__sizeProbeMatch; ++i) {
+        const wsdd__ProbeMatchType& match = matches->ProbeMatch[i];
+        print_text("EndpointReference", match.wsa5__EndpointReference.Address);
+        print_text("XAddrs", match.XAddrs);
+    }
+}
+```
+
+Resolve 응답은 단일 `wsdd__ResolveMatchType`으로 들어온다.
+
+```cpp
+void wsdd_event_ResolveMatches(..., wsdd__ResolveMatchType* match)
+{
+    print_text("EndpointReference", match->wsa5__EndpointReference.Address);
+    print_text("XAddrs", match->XAddrs);
+}
+```
+
+`wsddapi` plugin은 모든 `wsdd_event_*` 함수가 정의되어 있기를 기대한다. 그래서 client에서 사용하지 않는 `Hello`, `Bye`, `Probe`, `Resolve` callback도 빈 함수로 둔다.
+
+### 4. responder.cpp 작성 방식
+
+responder는 Target Service처럼 동작한다. UDP 3702에 bind하고 multicast group에 join한 뒤 요청 callback에서 응답 내용을 채운다.
+
+```text
+main()
+  -> Options 파싱
+  -> soap_new1(SOAP_IO_UDP)
+  -> soap_bind(..., 3702)
+  -> IP_ADD_MEMBERSHIP 239.255.255.250
+  -> 필요하면 soap_wsdd_Hello()
+  -> soap_wsdd_listen()
+  -> wsdd_event_Probe() 또는 wsdd_event_Resolve()
+  -> 필요하면 soap_wsdd_Bye()
+```
+
+Probe 요청은 `wsdd_event_Probe()`에서 처리한다. 응답은 `soap_wsdd_add_ProbeMatch()`로 `matches`에 추가한다.
 
 ```cpp
 soap_wsdd_add_ProbeMatch(
     soap,
     matches,
-    "urn:uuid:11111111-2222-3333-4444-555555555555",
-    "dn:NetworkVideoTransmitter",
-    "onvif://www.onvif.org/Profile/Streaming onvif://www.onvif.org/name/StudyDevice",
+    kEndpointReference,
+    kTypes,
+    kScopes,
     nullptr,
-    "http://127.0.0.1/onvif/device_service",
-    1);
-```
+    kXAddrs,
+    kMetadataVersion);
 
-그 다음 `SOAP_WSDD_MANAGED`를 반환하면 `wsddapi.c`가 `ProbeMatches` 메시지를 만들어 응답한다.
-
-```cpp
 return SOAP_WSDD_MANAGED;
 ```
 
-컨테이너 환경에서는 multicast loopback이 항상 기대대로 동작하지 않을 수 있다. 그래서 이 실습의 로컬 왕복 검증은 client가 `soap.udp://127.0.0.1:3702`로 직접 보내는 unicast 방식으로 진행한다.
+여기서 `SOAP_WSDD_MANAGED`를 반환해야 `wsddapi.c`가 채워진 `matches`를 이용해서 `ProbeMatches` 응답을 전송한다.
+
+Resolve 요청은 `wsdd_event_Resolve()`에서 처리한다. 요청으로 들어온 `EndpointReference`가 responder의 `kEndpointReference`와 같을 때만 응답을 만든다.
+
+```cpp
+if (EndpointReference == nullptr || std::strcmp(EndpointReference, kEndpointReference) != 0) {
+    return SOAP_WSDD_ADHOC;
+}
+
+match->wsa5__EndpointReference.Address = const_cast<char*>(kEndpointReference);
+match->Types = const_cast<char*>(kTypes);
+match->Scopes = scopes;
+match->XAddrs = const_cast<char*>(kXAddrs);
+match->MetadataVersion = kMetadataVersion;
+
+return SOAP_WSDD_MANAGED;
+```
+
+`ResolveMatch`의 `Scopes`는 구조체 포인터라서 `soap_malloc()`으로 gSOAP context에 붙여서 할당한다. 이렇게 해야 `soap_end()` 정리 흐름에 같이 묶인다.
+
+```cpp
+auto* scopes = static_cast<wsdd__ScopesType*>(soap_malloc(soap, sizeof(wsdd__ScopesType)));
+soap_default_wsdd__ScopesType(soap, scopes);
+scopes->__item = const_cast<char*>(kScopes);
+scopes->MatchBy = nullptr;
+```
+
+Hello / Bye는 요청 callback이 아니라 responder가 능동적으로 보내는 announcement다.
+
+```cpp
+soap_wsdd_Hello(
+    announcer,
+    SOAP_WSDD_ADHOC,
+    endpoint,
+    soap_wsa_rand_uuid(announcer),
+    nullptr,
+    kEndpointReference,
+    kTypes,
+    kScopes,
+    nullptr,
+    kXAddrs,
+    kMetadataVersion);
+```
+
+```cpp
+soap_wsdd_Bye(
+    announcer,
+    SOAP_WSDD_ADHOC,
+    endpoint,
+    soap_wsa_rand_uuid(announcer),
+    kEndpointReference,
+    kTypes,
+    kScopes,
+    nullptr,
+    kXAddrs,
+    kMetadataVersion);
+```
+
+### 5. monitor.cpp 작성 방식
+
+monitor는 요청을 보내지 않고 UDP port를 열어 이벤트만 듣는다.
+
+```text
+main()
+  -> Options 파싱
+  -> soap_new1(SOAP_IO_UDP)
+  -> soap_bind(..., options.port)
+  -> 필요하면 IP_ADD_MEMBERSHIP
+  -> soap_wsdd_listen()
+  -> wsdd_event_Hello() / wsdd_event_Bye()
+```
+
+핵심 callback은 두 개다.
+
+```cpp
+void wsdd_event_Hello(..., const char* EndpointReference, const char* XAddrs, ...)
+{
+    print_text("EndpointReference", EndpointReference);
+    print_text("XAddrs", XAddrs);
+}
+```
+
+```cpp
+void wsdd_event_Bye(..., const char* EndpointReference, const char* XAddrs, ...)
+{
+    print_text("EndpointReference", EndpointReference);
+    print_text("XAddrs", XAddrs);
+}
+```
+
+로컬 실습에서는 responder가 `--announce soap.udp://127.0.0.1:3703`으로 monitor에게 직접 Hello / Bye를 보내게 했다. 실제 multicast announcement를 들으려면 monitor를 3702에 bind하고 `--join-multicast`를 사용한다.
+
+### 6. 값 바꿔서 새 장비처럼 만들기
+
+가짜 장비 정보를 바꾸려면 `responder.cpp`의 상수만 먼저 바꾼다.
+
+```cpp
+constexpr const char* kEndpointReference = "urn:uuid:...";
+constexpr const char* kTypes = "dn:NetworkVideoTransmitter";
+constexpr const char* kScopes = "onvif://www.onvif.org/Profile/Streaming ...";
+constexpr const char* kXAddrs = "http://127.0.0.1/onvif/device_service";
+constexpr unsigned int kMetadataVersion = 1;
+```
+
+실제 ONVIF 장비 탐색에서 다음 단계로 넘길 값은 `XAddrs`다. 다음 실습에서는 이 주소로 Device Service SOAP 요청을 보낸다.
 
 ## Step 1. Generate gSOAP Code
-
-`onvif_discover.h`에서 gSOAP 코드를 생성한다.
 
 ```bash
 soapcpp2 -2 -C -I/usr/share/gsoap/import -I/usr/share/gsoap onvif_discover.h
@@ -768,334 +560,160 @@ soapcpp2 -2 -C -I/usr/share/gsoap/import -I/usr/share/gsoap onvif_discover.h
 
 - `-2`: SOAP 1.2 코드 생성
 - `-C`: client-side 코드 생성
-- `-I/usr/share/gsoap/import`: `wsdd.h` 같은 import header 검색 경로
-- `-I/usr/share/gsoap`: gSOAP 기본 검색 경로
-
-생성되는 주요 파일:
-
-```text
-soapH.h
-soapStub.h
-soapC.cpp
-soapClient.cpp
-soapClientLib.cpp
-wsdd.nsmap
-wsdd.Probe.req.xml
-wsdd.ProbeMatches.req.xml
-```
-
-중요한 점:
-
-- `wsdd.nsmap`이 생성된다.
-- `client.cpp`에서 `#include "wsdd.nsmap"`을 하므로 이 파일이 필요하다.
-- `soapC.cpp`, `soapClient.cpp`는 g++ 빌드에 직접 들어간다.
+- `-I`: gSOAP import path
 
 ## Step 2. Build With g++
 
-생성된 gSOAP 코드와 WS-Discovery plugin을 함께 빌드한다.
-
-### Build discover client
+Build `discover`:
 
 ```bash
 g++ -std=c++17 -Wall -Wextra -pedantic -O2 \
-  -I. \
-  -I/usr/share/gsoap \
-  -I/usr/share/gsoap/import \
-  -I/usr/share/gsoap/plugin \
+  -I. -I/usr/share/gsoap -I/usr/share/gsoap/import -I/usr/share/gsoap/plugin \
   -o discover \
-  client.cpp \
-  soapC.cpp \
-  soapClient.cpp \
+  client.cpp soapC.cpp soapClient.cpp \
   /usr/share/gsoap/plugin/wsddapi.c \
   /usr/share/gsoap/plugin/wsaapi.c \
   /usr/share/gsoap/plugin/threads.c \
   -lgsoap++
 ```
 
-### Build responder target service
+Build `responder`:
 
 ```bash
 g++ -std=c++17 -Wall -Wextra -pedantic -O2 \
-  -I. \
-  -I/usr/share/gsoap \
-  -I/usr/share/gsoap/import \
-  -I/usr/share/gsoap/plugin \
+  -I. -I/usr/share/gsoap -I/usr/share/gsoap/import -I/usr/share/gsoap/plugin \
   -o responder \
-  responder.cpp \
-  soapC.cpp \
-  soapClient.cpp \
+  responder.cpp soapC.cpp soapClient.cpp \
   /usr/share/gsoap/plugin/wsddapi.c \
   /usr/share/gsoap/plugin/wsaapi.c \
   /usr/share/gsoap/plugin/threads.c \
   -lgsoap++
 ```
 
-빌드에 들어가는 파일 묶음:
+Build `monitor`:
 
-```text
-client.cpp
-responder.cpp
-soapC.cpp
-soapClient.cpp
-wsddapi.c
-wsaapi.c
-threads.c
-libgsoap++
+```bash
+g++ -std=c++17 -Wall -Wextra -pedantic -O2 \
+  -I. -I/usr/share/gsoap -I/usr/share/gsoap/import -I/usr/share/gsoap/plugin \
+  -o monitor \
+  monitor.cpp soapC.cpp soapClient.cpp \
+  /usr/share/gsoap/plugin/wsddapi.c \
+  /usr/share/gsoap/plugin/wsaapi.c \
+  /usr/share/gsoap/plugin/threads.c \
+  -lgsoap++
 ```
 
-여기서 중요한 점은 gSOAP plugin의 `.c` 파일도 `g++` 명령에 같이 넣는다는 것이다. C++ 코드와 링크해야 하므로 이 실습에서는 `g++`로 한 번에 컴파일한다.
+## Step 3. Probe / ProbeMatches
 
-## Step 3. Run Local Round Trip
-
-터미널 1에서 responder를 먼저 실행한다.
+Terminal 1:
 
 ```bash
 ./responder --timeout 20
 ```
 
-터미널 2에서 client를 실행한다.
+Terminal 2:
 
 ```bash
 ./discover --endpoint soap.udp://127.0.0.1:3702 --timeout 3
 ```
 
-성공하면 client 쪽에서 다음처럼 출력된다.
+Expected client output:
 
 ```text
-Send WS-Discovery Probe
-Endpoint: soap.udp://127.0.0.1:3702
-Types: dn:NetworkVideoTransmitter
-MessageID: urn:uuid:...
-Wait ProbeMatches for 3 seconds...
-
 Found ONVIF device #1
 EndpointReference: urn:uuid:11111111-2222-3333-4444-555555555555
-Types: "":NetworkVideoTransmitter
-Scopes: onvif://www.onvif.org/Profile/Streaming onvif://www.onvif.org/name/StudyDevice
 XAddrs: http://127.0.0.1/onvif/device_service
-MetadataVersion: 1
-
-Sent log: sent_probe.xml
-Recv log: recv_probe.xml
 ```
 
-responder 쪽에서는 다음처럼 출력된다.
+## Step 4. Resolve / ResolveMatches
+
+Terminal 1:
+
+```bash
+./responder --timeout 20
+```
+
+Terminal 2:
+
+```bash
+./discover \
+  --endpoint soap.udp://127.0.0.1:3702 \
+  --resolve urn:uuid:11111111-2222-3333-4444-555555555555 \
+  --timeout 3
+```
+
+Expected client output:
 
 ```text
-Received Probe
-MessageID: urn:uuid:...
-Types: "":NetworkVideoTransmitter
-Send ProbeMatches
+Resolved ONVIF device
 EndpointReference: urn:uuid:11111111-2222-3333-4444-555555555555
-Types: dn:NetworkVideoTransmitter
-Scopes: onvif://www.onvif.org/Profile/Streaming onvif://www.onvif.org/name/StudyDevice
 XAddrs: http://127.0.0.1/onvif/device_service
 ```
 
-실제 네트워크에서 ONVIF 장비를 찾으려면 기본 multicast endpoint를 사용한다.
+## Step 5. Hello / Bye
+
+Terminal 1:
+
+```bash
+./monitor --port 3703 --timeout 10
+```
+
+Terminal 2:
+
+```bash
+./responder --timeout 3 --announce soap.udp://127.0.0.1:3703
+```
+
+Expected monitor output:
+
+```text
+Received Hello
+EndpointReference: urn:uuid:11111111-2222-3333-4444-555555555555
+XAddrs: http://127.0.0.1/onvif/device_service
+
+Received Bye
+EndpointReference: urn:uuid:11111111-2222-3333-4444-555555555555
+XAddrs: http://127.0.0.1/onvif/device_service
+```
+
+## Real Device Discovery
+
+실제 ONVIF 장비를 찾을 때는 기본 multicast endpoint를 사용한다.
 
 ```bash
 ./discover --timeout 5
 ```
 
-ONVIF 장비가 없는 환경에서는 다음처럼 끝난다.
+기본 endpoint:
 
 ```text
-Send WS-Discovery Probe
-Endpoint: soap.udp://239.255.255.250:3702
-Types: dn:NetworkVideoTransmitter
-MessageID: urn:uuid:...
-Wait ProbeMatches for 2 seconds...
-
-No ONVIF device found.
-
-Sent log: sent_probe.xml
-Recv log: recv_probe.xml
+soap.udp://239.255.255.250:3702
 ```
 
-ONVIF 장비가 응답하면 다음처럼 출력된다.
-
-```text
-Found ONVIF device #1
-EndpointReference: urn:uuid:...
-Types: dn:NetworkVideoTransmitter
-Scopes: onvif://www.onvif.org/Profile/Streaming ...
-XAddrs: http://192.168.0.25/onvif/device_service
-MetadataVersion: 1
-```
-
-## What To Observe
-
-### 1. soapcpp2 입력과 출력
-
-입력:
-
-```text
-onvif_discover.h
-```
-
-출력:
-
-```text
-soapH.h
-soapC.cpp
-soapClient.cpp
-wsdd.nsmap
-```
-
-`001_Soap_basic`에서 직접 만든 `calc.h`를 `soapcpp2`에 넣었던 것처럼, 이번에는 gSOAP가 제공하는 `wsdd.h`를 import해서 WS-Discovery용 코드를 생성한다.
-
-### 2. Probe 전송
-
-```cpp
-soap_wsdd_Probe(...)
-```
-
-이 함수가 WS-Discovery `Probe` 메시지를 만든다.
-
-핵심 인자:
-
-```cpp
-"soap.udp://239.255.255.250:3702"
-"dn:NetworkVideoTransmitter"
-```
-
-첫 번째는 WS-Discovery multicast endpoint이고, 두 번째는 ONVIF camera/NVT 장비 type이다.
-
-### 3. ProbeMatches 수신
-
-```cpp
-soap_wsdd_listen(soap, timeout);
-```
-
-이 함수가 UDP 응답을 기다린다.
-
-`ProbeMatches`가 오면 gSOAP plugin이 아래 callback을 호출한다.
-
-```cpp
-void wsdd_event_ProbeMatches(...)
-```
-
-### 4. XAddrs
-
-`XAddrs`는 다음 단계에서 사용할 Device Service endpoint다.
-
-```text
-XAddrs: http://192.168.0.25/onvif/device_service
-```
-
-다음 실습 `003_onvif_device_info`에서는 이 주소로 `GetDeviceInformation` SOAP 요청을 보낸다.
+컨테이너 환경에서는 multicast loopback이 항상 기대대로 동작하지 않을 수 있다. 그래서 로컬 실습은 `127.0.0.1` unicast로 검증하고, 실제 장비 탐색은 host network에서 실행하는 편이 좋다.
 
 ## Where To Read The gSOAP Implementation
 
-이 실습의 `client.cpp`에서 직접 작성한 부분과 gSOAP가 제공하는 부분은 분리해서 보면 이해하기 쉽다.
-
-### gSOAP schema input
-
 ```text
 /usr/share/gsoap/import/wsdd.h
-```
-
-여기서 확인할 것:
-
-- `wsdd__ProbeMatchesType`
-- `wsdd__ProbeMatchType`
-- `wsdd__ScopesType`
-- WS-Discovery message type 구조
-
-`client.cpp`에서 아래 필드를 출력할 수 있는 이유가 이 header에 구조체로 정의되어 있기 때문이다.
-
-```cpp
-matches->__sizeProbeMatch
-matches->ProbeMatch[i]
-match.wsa5__EndpointReference.Address
-match.Types
-match.Scopes->__item
-match.XAddrs
-```
-
-### WS-Discovery plugin API
-
-```text
 /usr/share/gsoap/plugin/wsddapi.h
-```
-
-여기서 확인할 것:
-
-- `soap_wsdd_Probe(...)`
-- `soap_wsdd_listen(...)`
-- `wsdd_event_ProbeMatches(...)`
-- `wsdd_event_Hello(...)`
-- `wsdd_event_Bye(...)`
-- `wsdd_event_Probe(...)`
-- `wsdd_event_Resolve(...)`
-- `wsdd_event_ResolveMatches(...)`
-
-`wsddapi.h`는 애플리케이션이 구현해야 하는 callback signature를 선언한다.
-
-그래서 `client.cpp`에 사용하지 않는 `wsdd_event_Hello`, `wsdd_event_Bye`, `wsdd_event_Probe`, `wsdd_event_Resolve`, `wsdd_event_ResolveMatches`도 빈 함수로 정의해둔다. 링커가 이 함수들을 찾기 때문이다.
-
-### WS-Discovery plugin implementation
-
-```text
 /usr/share/gsoap/plugin/wsddapi.c
-```
-
-여기서 확인할 것:
-
-- `soap_wsdd_Probe`가 SOAP Header와 `wsdd__ProbeType`을 채우는 방식
-- `soap_wsdd_listen`이 `soap_accept`, `soap_begin_serve`, `soap_wsdd_serve_request`를 호출하는 흐름
-- 수신한 `ProbeMatches`가 `wsdd_event_ProbeMatches`로 dispatch되는 흐름
-
-즉, 이 실습에서 직접 구현하는 것은 `ProbeMatches`를 받았을 때 무엇을 출력할지이고, WS-Discovery 메시지 생성/수신/dispatch는 `wsddapi.c`가 담당한다.
-
-### WS-Addressing helper
-
-```text
-/usr/share/gsoap/plugin/wsaapi.c
 /usr/share/gsoap/plugin/wsaapi.h
+/usr/share/gsoap/plugin/wsaapi.c
 ```
 
-여기서 확인할 것:
+읽을 위치:
 
-- `soap_wsa_rand_uuid(...)`
-- WS-Addressing `MessageID`, `To`, `Action`, `ReplyTo` 처리
-
-`client.cpp`의 아래 코드는 `wsaapi` helper를 사용하는 부분이다.
-
-```cpp
-const char* message_id = soap_wsa_rand_uuid(soap);
-```
-
-### Generated files
-
-```text
-soapH.h
-soapC.cpp
-soapClient.cpp
-wsdd.nsmap
-```
-
-이 파일들은 `soapcpp2`가 생성한다.
-
-- `soapH.h`: generated type/function declarations
-- `soapC.cpp`: serialization/deserialization
-- `soapClient.cpp`: generated client send/receive stubs
-- `wsdd.nsmap`: namespace prefix mapping
-
-실습 중에는 generated file을 처음부터 다 읽기보다, `wsddapi.c`에서 호출하는 generated 함수 이름을 따라가면서 보는 편이 좋다.
+- `wsdd.h`: `wsdd__ProbeMatchesType`, `wsdd__ResolveMatchType`, `wsdd__ScopesType`
+- `wsddapi.h`: `soap_wsdd_*` API와 `wsdd_event_*` callback signature
+- `wsddapi.c`: Probe, Resolve, Hello, Bye 송수신 구현
+- `wsaapi.c`: `soap_wsa_rand_uuid()`와 WS-Addressing helper
 
 ## Troubleshooting
 
-### host에서 soapcpp2가 없는 경우
+### `soapcpp2` command not found
 
-host에서 아래 명령이 실패하면:
-
-```bash
-soapcpp2 --version
-```
-
-컨테이너 안으로 들어가서 실습한다.
+host에 gSOAP 도구가 없으면 컨테이너 안에서 실행한다.
 
 ```bash
 cd 05_protocol
@@ -1104,33 +722,17 @@ docker compose exec server bash
 cd /workspace/002_onvif_discover
 ```
 
-### soapcpp2가 `#import`를 못 읽는 경우
+### `wsdd.nsmap` not found
 
-`onvif_discover.h` 파일 끝에 newline이 없거나 파일 내용이 깨졌을 수 있다.
-
-정상 내용:
-
-```cpp
-#import "wsdd.h"
-```
-
-마지막 줄 뒤에 줄바꿈이 있도록 저장한다.
-
-### wsdd.nsmap not found
-
-`soapcpp2`를 먼저 실행하지 않았거나 생성에 실패한 것이다.
+generated file을 만들지 않은 상태에서 빌드한 것이다. 먼저 `soapcpp2`를 실행한다.
 
 ```bash
 soapcpp2 -2 -C -I/usr/share/gsoap/import -I/usr/share/gsoap onvif_discover.h
 ```
 
-성공하면 `wsdd.nsmap`이 생긴다.
+### `undefined reference to soap_wsdd_*`
 
-### undefined reference to soap_wsdd_Probe
-
-`g++` 빌드 명령에서 `wsddapi.c`가 빠진 것이다.
-
-아래 파일들이 들어가야 한다.
+빌드 명령에 gSOAP plugin 구현 파일이 빠진 것이다. 아래 파일을 `g++` 입력에 같이 넣어야 한다.
 
 ```text
 /usr/share/gsoap/plugin/wsddapi.c
@@ -1138,24 +740,23 @@ soapcpp2 -2 -C -I/usr/share/gsoap/import -I/usr/share/gsoap onvif_discover.h
 /usr/share/gsoap/plugin/threads.c
 ```
 
-### 아무 장비도 안 잡히는 경우
+### responder가 Probe를 못 받는 경우
 
-아래를 확인한다.
+로컬 실습에서는 multicast 대신 unicast로 먼저 확인한다.
 
-- 카메라와 PC가 같은 L2 network에 있는가
-- 카메라 설정에서 ONVIF가 켜져 있는가
-- 방화벽에서 UDP 3702 송수신이 허용되어 있는가
-- Docker bridge network 때문에 multicast가 막히고 있지는 않은가
+```bash
+./responder --timeout 20
+./discover --endpoint soap.udp://127.0.0.1:3702 --timeout 3
+```
 
-빌드 학습은 Docker 안에서 해도 되지만, 실제 카메라 discovery는 host network에서 실행하는 편이 더 잘 된다.
+실제 ONVIF 장비 탐색이 안 되면 같은 L2 network인지, 장비의 ONVIF 기능이 켜져 있는지, UDP 3702 방화벽이 열려 있는지 확인한다. Docker bridge network에서는 multicast가 막히거나 loopback이 기대와 다르게 동작할 수 있으므로 실제 장비 탐색은 host network에서 실행하는 편이 낫다.
 
 ## Clean
 
-수동으로 생성물을 지우려면:
-
 ```bash
-rm -f discover
+rm -f discover responder monitor
 rm -f sent_probe.xml recv_probe.xml
+rm -f responder_sent.xml responder_recv.xml monitor_recv.xml
 rm -f soapH.h soapStub.h soapC.cpp soapClient.cpp soapClientLib.cpp wsdd.nsmap
 rm -f wsdd.*.req.xml wsdd.*.res.xml soap.nsmap soap*.xml
 ```

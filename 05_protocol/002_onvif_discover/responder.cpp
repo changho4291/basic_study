@@ -23,18 +23,27 @@ constexpr const char* kScopes =
 constexpr const char* kXAddrs = "http://127.0.0.1/onvif/device_service";
 constexpr unsigned int kMetadataVersion = 1;
 
-int parse_timeout(int argc, char** argv) {
-    if (argc == 1) {
-        return 60;
+struct Options {
+    int timeout = 60;
+    const char* announce_endpoint = nullptr;
+};
+
+Options parse_options(int argc, char** argv) {
+    Options options;
+
+    for (int i = 1; i < argc; ++i) {
+        if (std::strcmp(argv[i], "--timeout") == 0 && i + 1 < argc) {
+            const int timeout = std::atoi(argv[++i]);
+            options.timeout = timeout > 0 ? timeout : options.timeout;
+        } else if (std::strcmp(argv[i], "--announce") == 0 && i + 1 < argc) {
+            options.announce_endpoint = argv[++i];
+        } else {
+            std::printf("Usage: %s [--timeout seconds] [--announce soap.udp://host:port]\n", argv[0]);
+            std::exit(1);
+        }
     }
 
-    if (argc == 3 && std::strcmp(argv[1], "--timeout") == 0) {
-        const int timeout = std::atoi(argv[2]);
-        return timeout > 0 ? timeout : 60;
-    }
-
-    std::printf("Usage: %s [--timeout seconds]\n", argv[0]);
-    std::exit(1);
+    return options;
 }
 
 bool join_multicast_group(int sock) {
@@ -48,6 +57,67 @@ bool join_multicast_group(int sock) {
     }
 
     return true;
+}
+
+void send_hello(const char* endpoint) {
+    soap* announcer = soap_new1(SOAP_IO_UDP);
+    if (announcer == nullptr) {
+        std::fprintf(stderr, "soap_new1 failed for Hello\n");
+        return;
+    }
+
+    announcer->connect_flags = SO_BROADCAST;
+    announcer->send_timeout = 3;
+    soap_set_namespaces(announcer, namespaces);
+
+    if (soap_wsdd_Hello(
+            announcer,
+            SOAP_WSDD_ADHOC,
+            endpoint,
+            soap_wsa_rand_uuid(announcer),
+            nullptr,
+            kEndpointReference,
+            kTypes,
+            kScopes,
+            nullptr,
+            kXAddrs,
+            kMetadataVersion) != SOAP_OK) {
+        soap_print_fault(announcer, stderr);
+    }
+
+    soap_destroy(announcer);
+    soap_end(announcer);
+    soap_free(announcer);
+}
+
+void send_bye(const char* endpoint) {
+    soap* announcer = soap_new1(SOAP_IO_UDP);
+    if (announcer == nullptr) {
+        std::fprintf(stderr, "soap_new1 failed for Bye\n");
+        return;
+    }
+
+    announcer->connect_flags = SO_BROADCAST;
+    announcer->send_timeout = 3;
+    soap_set_namespaces(announcer, namespaces);
+
+    if (soap_wsdd_Bye(
+            announcer,
+            SOAP_WSDD_ADHOC,
+            endpoint,
+            soap_wsa_rand_uuid(announcer),
+            kEndpointReference,
+            kTypes,
+            kScopes,
+            nullptr,
+            kXAddrs,
+            kMetadataVersion) != SOAP_OK) {
+        soap_print_fault(announcer, stderr);
+    }
+
+    soap_destroy(announcer);
+    soap_end(announcer);
+    soap_free(announcer);
 }
 
 }  // namespace
@@ -181,12 +251,39 @@ soap_wsdd_mode wsdd_event_Resolve(
     const char* ReplyTo,
     const char* EndpointReference,
     struct wsdd__ResolveMatchType* match) {
-    (void)soap;
     (void)MessageID;
     (void)ReplyTo;
-    (void)EndpointReference;
-    (void)match;
-    return SOAP_WSDD_ADHOC;
+
+    std::printf("\nReceived Resolve\n");
+    std::printf("EndpointReference: %s\n", EndpointReference != nullptr ? EndpointReference : "-");
+
+    if (EndpointReference == nullptr || std::strcmp(EndpointReference, kEndpointReference) != 0) {
+        std::printf("Ignore Resolve: endpoint reference does not match this target service\n");
+        return SOAP_WSDD_ADHOC;
+    }
+
+    auto* scopes = static_cast<wsdd__ScopesType*>(soap_malloc(soap, sizeof(wsdd__ScopesType)));
+    if (scopes == nullptr) {
+        return SOAP_WSDD_ADHOC;
+    }
+
+    soap_default_wsdd__ScopesType(soap, scopes);
+    scopes->__item = const_cast<char*>(kScopes);
+    scopes->MatchBy = nullptr;
+
+    match->wsa5__EndpointReference.Address = const_cast<char*>(kEndpointReference);
+    match->Types = const_cast<char*>(kTypes);
+    match->Scopes = scopes;
+    match->XAddrs = const_cast<char*>(kXAddrs);
+    match->MetadataVersion = kMetadataVersion;
+
+    std::printf("Send ResolveMatches\n");
+    std::printf("Types: %s\n", kTypes);
+    std::printf("Scopes: %s\n", kScopes);
+    std::printf("XAddrs: %s\n", kXAddrs);
+    std::fflush(stdout);
+
+    return SOAP_WSDD_MANAGED;
 }
 
 void wsdd_event_ResolveMatches(
@@ -207,7 +304,7 @@ void wsdd_event_ResolveMatches(
 }
 
 int main(int argc, char** argv) {
-    const int timeout = parse_timeout(argc, argv);
+    const Options options = parse_options(argc, argv);
 
     soap* soap = soap_new1(SOAP_IO_UDP);
     if (soap == nullptr) {
@@ -217,9 +314,9 @@ int main(int argc, char** argv) {
 
     soap->bind_flags = SO_REUSEADDR;
     soap->connect_flags = SO_BROADCAST;
-    soap->accept_timeout = timeout;
-    soap->recv_timeout = timeout;
-    soap->send_timeout = timeout;
+    soap->accept_timeout = options.timeout;
+    soap->recv_timeout = options.timeout;
+    soap->send_timeout = options.timeout;
     soap_set_namespaces(soap, namespaces);
     soap_set_sent_logfile(soap, "responder_sent.xml");
     soap_set_recv_logfile(soap, "responder_recv.xml");
@@ -243,12 +340,22 @@ int main(int argc, char** argv) {
     std::printf("WS-Discovery responder listening on %s:%d for %d seconds\n",
                 kMulticastAddress,
                 kDiscoveryPort,
-                timeout);
+                options.timeout);
     std::printf("Advertised XAddrs: %s\n", kXAddrs);
     std::fflush(stdout);
 
-    if (soap_wsdd_listen(soap, timeout) != SOAP_OK) {
+    if (options.announce_endpoint != nullptr) {
+        std::printf("Send Hello: %s\n", options.announce_endpoint);
+        send_hello(options.announce_endpoint);
+    }
+
+    if (soap_wsdd_listen(soap, options.timeout) != SOAP_OK) {
         soap_print_fault(soap, stderr);
+    }
+
+    if (options.announce_endpoint != nullptr) {
+        std::printf("Send Bye: %s\n", options.announce_endpoint);
+        send_bye(options.announce_endpoint);
     }
 
     std::printf("\nResponder finished\n");

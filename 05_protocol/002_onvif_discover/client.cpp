@@ -25,6 +25,7 @@ struct DiscoveryState {
 struct Options {
     int timeout = 5;
     const char* endpoint = kDiscoveryEndpoint;
+    const char* resolve_endpoint_reference = nullptr;
 };
 
 void print_text(const char* label, const char* value) {
@@ -40,13 +41,28 @@ Options parse_options(int argc, char** argv) {
             options.timeout = timeout > 0 ? timeout : options.timeout;
         } else if (std::strcmp(argv[i], "--endpoint") == 0 && i + 1 < argc) {
             options.endpoint = argv[++i];
+        } else if (std::strcmp(argv[i], "--resolve") == 0 && i + 1 < argc) {
+            options.resolve_endpoint_reference = argv[++i];
         } else {
-            std::printf("Usage: %s [--timeout seconds] [--endpoint soap.udp://host:port]\n", argv[0]);
+            std::printf("Usage: %s [--timeout seconds] [--endpoint soap.udp://host:port] [--resolve endpoint-reference]\n", argv[0]);
             std::exit(1);
         }
     }
 
     return options;
+}
+
+void print_resolve_match(const wsdd__ResolveMatchType* match) {
+    if (match == nullptr) {
+        return;
+    }
+
+    std::printf("\nResolved ONVIF device\n");
+    print_text("EndpointReference", match->wsa5__EndpointReference.Address);
+    print_text("Types", match->Types);
+    print_text("Scopes", match->Scopes != nullptr ? match->Scopes->__item : nullptr);
+    print_text("XAddrs", match->XAddrs);
+    std::printf("MetadataVersion: %u\n", match->MetadataVersion);
 }
 
 }  // namespace
@@ -185,13 +201,17 @@ void wsdd_event_ResolveMatches(
     const char* MessageID,
     const char* RelatesTo,
     struct wsdd__ResolveMatchType* match) {
-    (void)soap;
     (void)InstanceId;
     (void)SequenceId;
     (void)MessageNumber;
     (void)MessageID;
     (void)RelatesTo;
-    (void)match;
+
+    auto* state = static_cast<DiscoveryState*>(soap->user);
+    if (state != nullptr) {
+        ++state->matches;
+    }
+    print_resolve_match(match);
 }
 
 int main(int argc, char** argv) {
@@ -230,32 +250,55 @@ int main(int argc, char** argv) {
 
     const char* message_id = soap_wsa_rand_uuid(soap);
 
-    std::printf("Send WS-Discovery Probe\n");
-    std::printf("Endpoint: %s\n", options.endpoint);
-    std::printf("Types: %s\n", kOnvifDeviceType);
-    std::printf("MessageID: %s\n", message_id);
-    std::fflush(stdout);
+    if (options.resolve_endpoint_reference != nullptr) {
+        std::printf("Send WS-Discovery Resolve\n");
+        std::printf("Endpoint: %s\n", options.endpoint);
+        std::printf("EndpointReference: %s\n", options.resolve_endpoint_reference);
+        std::printf("MessageID: %s\n", message_id);
+        std::fflush(stdout);
 
-    // Send WS-Discovery Probe to target services in ad-hoc multicast mode.
-    // Implementation: /usr/share/gsoap/plugin/wsddapi.c::soap_wsdd_Probe
-    if (soap_wsdd_Probe(
-            soap,
-            SOAP_WSDD_ADHOC,
-            SOAP_WSDD_TO_TS,
-            options.endpoint,
-            message_id,
-            nullptr,
-            kOnvifDeviceType,
-            nullptr,
-            nullptr) != SOAP_OK) {
-        soap_print_fault(soap, stderr);
-        soap_destroy(soap);
-        soap_end(soap);
-        soap_free(soap);
-        return 1;
+        if (soap_wsdd_Resolve(
+                soap,
+                SOAP_WSDD_ADHOC,
+                SOAP_WSDD_TO_TS,
+                options.endpoint,
+                message_id,
+                nullptr,
+                options.resolve_endpoint_reference) != SOAP_OK) {
+            soap_print_fault(soap, stderr);
+            soap_destroy(soap);
+            soap_end(soap);
+            soap_free(soap);
+            return 1;
+        }
+    } else {
+        std::printf("Send WS-Discovery Probe\n");
+        std::printf("Endpoint: %s\n", options.endpoint);
+        std::printf("Types: %s\n", kOnvifDeviceType);
+        std::printf("MessageID: %s\n", message_id);
+        std::fflush(stdout);
+
+        // Send WS-Discovery Probe to target services in ad-hoc multicast mode.
+        // Implementation: /usr/share/gsoap/plugin/wsddapi.c::soap_wsdd_Probe
+        if (soap_wsdd_Probe(
+                soap,
+                SOAP_WSDD_ADHOC,
+                SOAP_WSDD_TO_TS,
+                options.endpoint,
+                message_id,
+                nullptr,
+                kOnvifDeviceType,
+                nullptr,
+                nullptr) != SOAP_OK) {
+            soap_print_fault(soap, stderr);
+            soap_destroy(soap);
+            soap_end(soap);
+            soap_free(soap);
+            return 1;
+        }
     }
 
-    std::printf("Wait ProbeMatches for %d seconds...\n", options.timeout);
+    std::printf("Wait WS-Discovery responses for %d seconds...\n", options.timeout);
     std::fflush(stdout);
 
     // Listen for WS-Discovery responses. When ProbeMatches is received,

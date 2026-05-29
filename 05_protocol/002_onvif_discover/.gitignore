@@ -1,10 +1,12 @@
 discover
 responder
+monitor
 build/
 sent_probe.xml
 recv_probe.xml
 responder_sent.xml
 responder_recv.xml
+monitor_recv.xml
 soapH.h
 soapStub.h
 soapC.cpp
