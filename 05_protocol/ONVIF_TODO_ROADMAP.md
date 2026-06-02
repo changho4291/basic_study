@@ -100,16 +100,19 @@ HardwareId: ...
 
 ## 004_onvif_auth_wsse
 
-Status: Pending
+Status: In Progress
 
 Goal: ONVIF UsernameToken Digest 인증을 이해하고 구현한다.
 
-- [ ] README만 보고 재현 가능하도록 실습 문서 작성
-- [ ] WS-Security UsernameToken 구조 확인
-- [ ] `Nonce`, `Created`, `PasswordDigest` 생성 방식 정리
-- [ ] `PasswordDigest = Base64(SHA1(Nonce + Created + Password))` 구현
-- [ ] 인증이 필요한 Device Service 요청에 Security Header 추가
-- [ ] 인증 성공/실패 케이스 비교
+- [x] README만 보고 재현 가능하도록 실습 문서 작성
+- [x] WS-Security UsernameToken 구조 확인
+- [x] `Nonce`, `Created`, `PasswordDigest` 생성 방식 정리
+- [x] `PasswordDigest = Base64(SHA1(Nonce + Created + Password))` 구현
+- [x] 인증이 필요한 Device Service 요청에 Security Header 추가
+- [x] 학습용 fake Device Service에서 UsernameToken Digest 검증 구현
+- [x] 인증 성공/실패 케이스 비교
+- [ ] 실제 ONVIF 장비에서 UsernameToken Digest 인증 확인
+- [ ] 장비 시간 오차로 인한 인증 실패 여부 확인
 
 Notes:
 
