@@ -15,7 +15,8 @@ int main(int argc, char* argv[]) {
     GstElement* sink = gst_element_factory_make("fakesink", "sink");
 
     // 4. Element 생성 확인
-    if (pipeline == nullptr || source == nullptr || convert == nullptr || sink == nullptr) {
+    if (pipeline == nullptr || source == nullptr || convert == nullptr || 
+        sink == nullptr) {
         std::cerr << "Failed to create one or more GStreamer elements" << std::endl;
 
         if (pipeline != nullptr) { gst_object_unref(pipeline); }
