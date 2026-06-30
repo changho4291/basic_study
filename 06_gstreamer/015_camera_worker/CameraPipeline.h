@@ -6,7 +6,53 @@
 
 #include <string>
 
+enum class CameraPipelineEvent {
+    None,
+    Error,
+    Eos
+};
+
 class CameraPipeline {
+public:
+    CameraPipeline(
+        std::string rtsp_uri,
+        std::string record_pattern,
+        int split_seconds
+    );
+
+    ~CameraPipeline();
+
+    CameraPipeline(const CameraPipeline&) = delete;
+    CameraPipeline& operator=(const CameraPipeline&) = delete;
+
+    bool create();
+    bool start();
+
+    CameraPipelineEvent poll_bus(int timeout_ms);
+
+    void stop();
+
+private:
+    static void on_pad_added(
+        GstElement* src,
+        GstPad* new_pad,
+        gpointer user_data
+    );
+
+    static GstFlowReturn on_new_sample(
+        GstAppSink* appsink,
+        gpointer user_data
+    );
+
+    void handle_pad_added(GstPad* new_pad);
+    GstFlowReturn handle_new_sample(GstAppSink* appsink);
+
+    bool create_elements();
+    bool configure_elements();
+    bool add_elements_to_pipeline();
+    bool link_static_elements();
+    bool link_tee_branches();
+
 private:
     std::string rtsp_uri_;
     std::string record_pattern_;
@@ -36,44 +82,6 @@ private:
 
     GstPad* record_queue_sink_pad_ = nullptr;
     GstPad* app_queue_sink_pad_ = nullptr;
-
-public:
-    CameraPipeline(
-        std::string rtsp_uri,
-        std::string record_pattern,
-        int split_seconds
-    );
-
-    ~CameraPipeline();
-
-    CameraPipeline(const CameraPipeline&) = delete;
-    CameraPipeline& operator=(const CameraPipeline&) = delete;
-
-    bool create();
-    bool start();
-    bool wait_until_error_or_eos();
-    void stop();
-
-private:
-    static void on_pad_added(
-        GstElement* src,
-        GstPad* new_pad,
-        gpointer user_data
-    );
-
-    static GstFlowReturn on_new_sample(
-        GstAppSink* appsink,
-        gpointer user_data
-    );
-
-    void handle_pad_added(GstPad* new_pad);
-    GstFlowReturn handle_new_sample(GstAppSink* appsink);
-
-    bool create_elements();
-    bool configure_elements();
-    bool add_elements_to_pipeline();
-    bool link_static_elements();
-    bool link_tee_branches();
 };
 
 #endif // __CAMERAPIPELINE_H__

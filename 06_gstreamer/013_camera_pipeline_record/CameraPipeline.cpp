@@ -3,10 +3,11 @@
 CameraPipeline::CameraPipeline(
     std::string rtsp_uri,
     std::string record_pattern,
-    int spilt_seconds) : 
-    rtsp_uri_(std::move(rtsp_uri)), 
-    record_pattern_(std::move(record_pattern)),
-    split_seconds_(std::move(split_seconds_)) {}
+    int spilt_seconds
+) 
+    : rtsp_uri_(std::move(rtsp_uri)), 
+      record_pattern_(std::move(record_pattern)),
+      split_seconds_(split_seconds_) {}
 
 CameraPipeline::~CameraPipeline() {
     stop();

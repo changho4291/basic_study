@@ -3,6 +3,17 @@
 #include <iostream>
 #include <utility>
 
+namespace {
+
+void unref_element_if_needed(GstElement*& element) {
+    if (element != nullptr) {
+        gst_object_unref(element);
+        element = nullptr;
+    }
+}
+
+} // namespace
+
 CameraPipeline::CameraPipeline(
     std::string rtsp_uri,
     std::string record_pattern,
@@ -35,14 +46,14 @@ bool CameraPipeline::create() {
         return false;
     }
 
-    // 4. Element 속성 설정
-    if (!configure_elements()) {
+    // 4. 파이프라인에 Element 추가
+    if (!add_elements_to_pipeline()) {
         stop();
         return false;
     }
 
-    // 5. 파이프라인에 Element 추가
-    if (!add_elements_to_pipeline()) {
+    // 5. Element 속성 설정
+    if (!configure_elements()) {
         stop();
         return false;
     }
@@ -103,8 +114,45 @@ bool CameraPipeline::create_elements() {
         app_queue_ == nullptr || decoder_ == nullptr || converter_ == nullptr ||
         videoscale_ == nullptr || capsfilter_ == nullptr || app_sink_ == nullptr) {
         std::cerr << "Failed to create one or more GStreamer elements" << std::endl;
+
+        unref_element_if_needed(source_);
+        unref_element_if_needed(depay_);
+        unref_element_if_needed(parser_);
+        unref_element_if_needed(tee_);
+        unref_element_if_needed(record_queue_);
+        unref_element_if_needed(split_sink_);
+        unref_element_if_needed(app_queue_);
+        unref_element_if_needed(decoder_);
+        unref_element_if_needed(converter_);
+        unref_element_if_needed(videoscale_);
+        unref_element_if_needed(capsfilter_);
+        unref_element_if_needed(app_sink_);
+
         return false;
     }
+
+    return true;
+}
+
+bool CameraPipeline::add_elements_to_pipeline() {
+    // 1. 파이프라인에 Element 추가
+    gst_bin_add_many(
+        GST_BIN(pipeline_),
+        source_,
+        depay_,
+        parser_,
+        tee_,
+        record_queue_,
+        split_sink_,
+        app_queue_,
+        decoder_,
+        converter_,
+        videoscale_,
+        capsfilter_,
+        app_sink_,
+        nullptr
+    );
+
     return true;
 }
 
@@ -132,10 +180,15 @@ bool CameraPipeline::configure_elements() {
         nullptr
     );
 
-    // 4. appsink 입력 포맷 설정
+    // 4. appsink branch 출력 포맷 설정
     GstCaps* caps = gst_caps_from_string(
         "video/x-raw,format=RGB,width=640,height=360"
     );
+
+    if (caps == nullptr) {
+        std::cerr << "Failed to create caps" << std::endl;
+        return false;
+    }
 
     g_object_set(
         capsfilter_,
@@ -152,28 +205,6 @@ bool CameraPipeline::configure_elements() {
         "sync", FALSE,
         "max-buffers", 1,
         "drop", TRUE,
-        nullptr
-    );
-
-    return true;
-}
-
-bool CameraPipeline::add_elements_to_pipeline() {
-    // 1. 파이프라인에 Element 추가
-    gst_bin_add_many(
-        GST_BIN(pipeline_),
-        source_,
-        depay_,
-        parser_,
-        tee_,
-        record_queue_,
-        split_sink_,
-        app_queue_,
-        decoder_,
-        converter_,
-        videoscale_,
-        capsfilter_,
-        app_sink_,
         nullptr
     );
 
@@ -262,27 +293,27 @@ bool CameraPipeline::start() {
     return true;
 }
 
-bool CameraPipeline::wait_until_error_or_eos() {
+CameraPipelineEvent CameraPipeline::poll_bus(int timeout_ms) {
     // 1. 파이프라인 생성 여부 확인
     if (pipeline_ == nullptr) {
-        return false;
+        return CameraPipelineEvent::Error;
     }
 
     // 2. Bus 가져오기
     GstBus* bus = gst_element_get_bus(pipeline_);
 
     if (bus == nullptr) {
-        return false;
+        return CameraPipelineEvent::Error;
     }
 
-    // 3. ERROR 또는 EOS 메시지 대기
+    // 3. 지정 시간 동안 ERROR 또는 EOS 메시지 확인
     GstMessage* msg = gst_bus_timed_pop_filtered(
         bus,
-        GST_CLOCK_TIME_NONE,
+        static_cast<GstClockTime>(timeout_ms) * GST_MSECOND,
         static_cast<GstMessageType>(GST_MESSAGE_ERROR | GST_MESSAGE_EOS)
     );
 
-    bool need_reconnect = true;
+    CameraPipelineEvent event = CameraPipelineEvent::None;
 
     // 4. 메시지 처리
     if (msg != nullptr) {
@@ -309,17 +340,17 @@ bool CameraPipeline::wait_until_error_or_eos() {
                 g_free(debug_info);
             }
 
-            need_reconnect = true;
+            event = CameraPipelineEvent::Error;
             break;
         }
 
         case GST_MESSAGE_EOS:
             std::cout << "End of stream" << std::endl;
-            need_reconnect = true;
+            event = CameraPipelineEvent::Eos;
             break;
 
         default:
-            need_reconnect = true;
+            event = CameraPipelineEvent::None;
             break;
         }
 
@@ -329,7 +360,7 @@ bool CameraPipeline::wait_until_error_or_eos() {
     // 5. Bus 해제
     gst_object_unref(bus);
 
-    return need_reconnect;
+    return event;
 }
 
 void CameraPipeline::stop() {
@@ -339,14 +370,22 @@ void CameraPipeline::stop() {
         depay_ = nullptr;
         parser_ = nullptr;
         tee_ = nullptr;
+
         record_queue_ = nullptr;
         split_sink_ = nullptr;
+
         app_queue_ = nullptr;
         decoder_ = nullptr;
         converter_ = nullptr;
         videoscale_ = nullptr;
         capsfilter_ = nullptr;
         app_sink_ = nullptr;
+
+        tee_record_pad_ = nullptr;
+        tee_app_pad_ = nullptr;
+        record_queue_sink_pad_ = nullptr;
+        app_queue_sink_pad_ = nullptr;
+
         frame_count_ = 0;
         return;
     }
@@ -394,6 +433,7 @@ void CameraPipeline::stop() {
     app_queue_ = nullptr;
     decoder_ = nullptr;
     converter_ = nullptr;
+    videoscale_ = nullptr;
     capsfilter_ = nullptr;
     app_sink_ = nullptr;
 
