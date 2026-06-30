@@ -16,6 +16,12 @@ struct CameraConfig {
 };
 
 class CameraManager {
+private:
+    bool running_ = false;
+
+    mutable std::mutex mutex_;
+    std::vector<std::unique_ptr<CameraWorker>> workers_;
+
 public:
     CameraManager() = default;
     ~CameraManager();
@@ -24,6 +30,7 @@ public:
     CameraManager& operator=(const CameraManager&) = delete;
 
     bool add_camera(const CameraConfig& config);
+    bool remove_camera(const std::string& camera_id);
 
     void start_all();
     void stop_all();
@@ -33,12 +40,6 @@ public:
 
 private:
     bool has_camera_id_locked(const std::string& camera_id) const;
-
-private:
-    bool running_ = false;
-
-    mutable std::mutex mutex_;
-    std::vector<std::unique_ptr<CameraWorker>> workers_;
 };
 
 #endif // __CAMERAMANAGER_H__

@@ -11,7 +11,7 @@ int main(int argc, char* argv[]) {
     // 2. CameraManager 생성
     CameraManager manager;
 
-    // 3. 카메라 등록
+    // 3. 시작 전 카메라 등록
     manager.add_camera({
         "camera_001",
         "rtsp://127.0.0.1:8554/test",
@@ -19,6 +19,19 @@ int main(int argc, char* argv[]) {
         5
     });
 
+    std::cout << "Camera count: "
+              << manager.camera_count()
+              << std::endl;
+
+    // 4. 모든 카메라 시작
+    manager.start_all();
+
+    std::cout << std::endl;
+    std::cout << "CameraManager started" << std::endl;
+    std::cout << "Press Enter to add camera_002..." << std::endl;
+    std::cin.get();
+
+    // 5. 실행 중 카메라 추가
     manager.add_camera({
         "camera_002",
         "rtsp://127.0.0.1:8554/test",
@@ -30,24 +43,22 @@ int main(int argc, char* argv[]) {
               << manager.camera_count()
               << std::endl;
 
-    // 4. 모든 카메라 시작
-    manager.start_all();
-
-    // 5. 실행 중 추가
-    manager.add_camera({
-        "camera_003",
-        "rtsp://127.0.0.1:8554/test",
-        "record_camera_003_%03d.mp4",
-        5
-    });
-
-    std::cout << "CameraManager started" << std::endl;
-    std::cout << "Press Enter to stop..." << std::endl;
-
-    // 6. 종료 입력 대기
+    std::cout << std::endl;
+    std::cout << "Press Enter to remove camera_002..." << std::endl;
     std::cin.get();
 
-    // 7. 모든 카메라 정지
+    // 6. 실행 중 카메라 제거
+    manager.remove_camera("camera_002");
+
+    std::cout << "Camera count: "
+              << manager.camera_count()
+              << std::endl;
+
+    std::cout << std::endl;
+    std::cout << "Press Enter to stop all cameras..." << std::endl;
+    std::cin.get();
+
+    // 7. 전체 정지
     manager.stop_all();
 
     std::cout << "Program finished" << std::endl;

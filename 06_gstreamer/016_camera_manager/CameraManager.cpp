@@ -33,32 +33,78 @@ bool CameraManager::add_camera(const CameraConfig& config) {
         config.split_seconds
     );
 
-    // 3. Manager에 등록
-    std::lock_guard<std::mutex> lock(mutex_);
+    CameraWorker* added_worker = nullptr;
+    bool should_start = false;
 
-    if (has_camera_id_locked(config.camera_id)) {
-        std::cerr << "Camera already exists: "
+    {
+        // 3. Manager에 등록
+        std::lock_guard<std::mutex> lock(mutex_);
+
+        if (has_camera_id_locked(config.camera_id)) {
+            std::cerr << "Camera already exists: "
+                      << config.camera_id
+                      << std::endl;
+            return false;
+        }
+
+        added_worker = worker.get();
+        should_start = running_;
+
+        workers_.push_back(std::move(worker));
+
+        std::cout << "Added camera: "
                   << config.camera_id
                   << std::endl;
-        return false;
     }
 
-    CameraWorker* added_worker = worker.get();
-
-    workers_.push_back(std::move(worker));
-
-    std::cout << "Added camera: "
-              << config.camera_id
-              << std::endl;
-
-    // 4. 이미 Manager가 실행 중이면 새 카메라도 즉시 시작
-    if (running_) {
+    // 4. 이미 실행 중이면 새 카메라도 즉시 시작
+    if (should_start && added_worker != nullptr) {
         std::cout << "Starting newly added camera: "
                   << config.camera_id
                   << std::endl;
 
         added_worker->start();
     }
+
+    return true;
+}
+
+bool CameraManager::remove_camera(const std::string& camera_id) {
+    // 1. 제거할 worker를 목록에서 분리
+    std::unique_ptr<CameraWorker> removed_worker;
+
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+
+        for (auto it = workers_.begin(); it != workers_.end(); ++it) {
+            if (*it == nullptr) { continue; }
+
+            if ((*it)->camera_id() == camera_id) {
+                removed_worker = std::move(*it);
+                workers_.erase(it);
+                break;
+            }
+        }
+    }
+
+    // 2. 대상 카메라가 없으면 실패
+    if (removed_worker == nullptr) {
+        std::cerr << "Camera not found: "
+                  << camera_id
+                  << std::endl;
+        return false;
+    }
+
+    // 3. worker 정지
+    std::cout << "Removing camera: "
+              << camera_id
+              << std::endl;
+
+    removed_worker->stop();
+
+    std::cout << "Removed camera: "
+              << camera_id
+              << std::endl;
 
     return true;
 }
