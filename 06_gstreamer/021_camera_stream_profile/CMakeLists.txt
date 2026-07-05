@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.20)
 
-project(021_multy_codec LANGUAGES CXX)
+project(025_vms_stream_profile LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -18,6 +18,7 @@ add_executable(gst_basic
     CameraWorker.cpp
     CameraManager.cpp
     RecordingSegmentStore.cpp
+    CameraStreamProfile.cpp
 )
 
 target_include_directories(gst_basic PRIVATE

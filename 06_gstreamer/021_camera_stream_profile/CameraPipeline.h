@@ -6,6 +6,7 @@
 
 #include <string>
 
+#include "CameraStreamProfile.h"
 #include "RecordingSegmentStore.h"
 
 enum class CameraPipelineEvent {
@@ -16,6 +17,8 @@ enum class CameraPipelineEvent {
 
 class CameraPipeline {
 private:
+    CameraStreamProfile stream_profile_;
+
     std::string camera_id_;
     std::string rtsp_uri_;
     std::string record_pattern_;
@@ -50,10 +53,7 @@ private:
 
 public:
     CameraPipeline(
-        std::string camera_id,
-        std::string rtsp_uri,
-        std::string record_pattern,
-        int split_seconds,
+        CameraStreamProfile stream_profile,
         RecordingSegmentStore* segment_store
     );
 

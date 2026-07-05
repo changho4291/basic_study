@@ -1,5 +1,6 @@
 #pragma once
 
+#include "CameraStreamProfile.h"
 #include "CameraWorker.h"
 #include "RecordingSegmentStore.h"
 
@@ -9,13 +10,6 @@
 #include <string>
 #include <vector>
 
-struct CameraConfig {
-    std::string camera_id;
-    std::string rtsp_uri;
-    std::string record_pattern;
-    int split_seconds = 5;
-};
-
 class CameraManager {
 public:
     CameraManager() = default;
@@ -24,7 +18,7 @@ public:
     CameraManager(const CameraManager&) = delete;
     CameraManager& operator=(const CameraManager&) = delete;
 
-    bool add_camera(const CameraConfig& config);
+    bool add_camera(const CameraStreamProfile& profile);
     bool remove_camera(const std::string& camera_id);
 
     void start_all();

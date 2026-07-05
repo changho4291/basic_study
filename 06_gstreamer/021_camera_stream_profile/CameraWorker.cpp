@@ -8,16 +8,11 @@
 #include <utility>
 
 CameraWorker::CameraWorker(
-    std::string camera_id,
-    std::string rtsp_uri,
-    std::string record_pattern,
-    int split_seconds,
+    CameraStreamProfile stream_profile,
     RecordingSegmentStore* segment_store
 )
-    : camera_id_(std::move(camera_id)),
-      rtsp_uri_(std::move(rtsp_uri)),
-      record_pattern_(std::move(record_pattern)),
-      split_seconds_(split_seconds),
+    : stream_profile_(std::move(stream_profile)),
+      camera_id_(stream_profile_.camera_id),
       segment_store_(segment_store) {}
 
 CameraWorker::~CameraWorker() {
@@ -67,10 +62,7 @@ void CameraWorker::run() {
 
         // 2. CameraPipeline 생성
         CameraPipeline camera(
-            camera_id_,
-            rtsp_uri_,
-            record_pattern_,
-            split_seconds_,
+            stream_profile_,
             segment_store_
         );
 

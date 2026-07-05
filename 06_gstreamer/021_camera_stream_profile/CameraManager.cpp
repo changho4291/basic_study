@@ -2,35 +2,42 @@
 
 #include <iostream>
 
-#include <iostream>
-
 CameraManager::~CameraManager() {
     stop_all();
 }
 
-bool CameraManager::add_camera(const CameraConfig& config) {
+bool CameraManager::add_camera(const CameraStreamProfile& profile) {
     // 1. 필수 값 확인
-    if (config.camera_id.empty()) {
+    if (profile.camera_id.empty()) {
         std::cerr << "camera_id is empty" << std::endl;
         return false;
     }
 
-    if (config.rtsp_uri.empty()) {
+    if (profile.profile_token.empty()) {
+        std::cerr << "profile_token is empty" << std::endl;
+        return false;
+    }
+
+    if (profile.rtsp_uri.empty()) {
         std::cerr << "rtsp_uri is empty" << std::endl;
         return false;
     }
 
-    if (config.record_pattern.empty()) {
+    if (profile.record_pattern.empty()) {
         std::cerr << "record_pattern is empty" << std::endl;
+        return false;
+    }
+
+    if (!profile.record_enabled) {
+        std::cerr << "recording is disabled for profile: "
+                  << profile.profile_token
+                  << std::endl;
         return false;
     }
 
     // 2. CameraWorker 생성
     auto worker = std::make_unique<CameraWorker>(
-        config.camera_id,
-        config.rtsp_uri,
-        config.record_pattern,
-        config.split_seconds,
+        profile,
         &segment_store_
     );
 
@@ -41,9 +48,9 @@ bool CameraManager::add_camera(const CameraConfig& config) {
         // 3. Manager에 등록
         std::lock_guard<std::mutex> lock(mutex_);
 
-        if (has_camera_id_locked(config.camera_id)) {
+        if (has_camera_id_locked(profile.camera_id)) {
             std::cerr << "Camera already exists: "
-                      << config.camera_id
+                      << profile.camera_id
                       << std::endl;
             return false;
         }
@@ -53,15 +60,15 @@ bool CameraManager::add_camera(const CameraConfig& config) {
 
         workers_.push_back(std::move(worker));
 
-        std::cout << "Added camera: "
-                  << config.camera_id
+        std::cout << "Added camera stream profile: "
+                  << describe_camera_stream_profile(profile)
                   << std::endl;
     }
 
     // 4. 이미 실행 중이면 새 카메라도 즉시 시작
     if (should_start && added_worker != nullptr) {
         std::cout << "Starting newly added camera: "
-                  << config.camera_id
+                  << profile.camera_id
                   << std::endl;
 
         added_worker->start();
