@@ -1,9 +1,6 @@
 #include "CameraPipeline.h"
 
-#include <algorithm>
-#include <cctype>
 #include <iostream>
-#include <string>
 #include <utility>
 
 namespace {
@@ -15,79 +12,19 @@ void unref_element_if_needed(GstElement*& element) {
     }
 }
 
-std::string to_upper_copy(std::string value) {
-    std::transform(
-        value.begin(),
-        value.end(),
-        value.begin(),
-        [](unsigned char ch) {
-            return static_cast<char>(std::toupper(ch));
-        }
-    );
-
-    return value;
-}
-
-StreamCodecHint codec_hint_from_rtp_encoding_name(const gchar* encoding_name) {
-    if (encoding_name == nullptr) {
-        return StreamCodecHint::Unknown;
-    }
-
-    const std::string normalized = to_upper_copy(encoding_name);
-
-    if (normalized == "H264") {
-        return StreamCodecHint::H264;
-    }
-
-    if (normalized == "H265" || normalized == "HEVC") {
-        return StreamCodecHint::H265;
-    }
-
-    if (normalized == "JPEG" || normalized == "MJPEG") {
-        return StreamCodecHint::MJPEG;
-    }
-
-    if (normalized == "MP4V-ES" || normalized == "MPEG4") {
-        return StreamCodecHint::MPEG4;
-    }
-
-    if (normalized == "MPV" || normalized == "MPEG2") {
-        return StreamCodecHint::MPEG2;
-    }
-
-    if (normalized == "MP2T") {
-        return StreamCodecHint::MPEG_TS;
-    }
-
-    return StreamCodecHint::Unknown;
-}
-
-bool codec_hint_matches(
-    StreamCodecHint selected_config_codec,
-    StreamCodecHint runtime_codec
-) {
-    if (selected_config_codec == StreamCodecHint::Unknown) {
-        return false;
-    }
-
-    if (runtime_codec == StreamCodecHint::Unknown) {
-        return false;
-    }
-
-    return selected_config_codec == runtime_codec;
-}
-
 } // namespace
 
 CameraPipeline::CameraPipeline(
-    RecordingStreamConfig stream_config,
+    std::string camera_id,
+    std::string rtsp_uri,
+    std::string record_pattern,
+    int split_seconds,
     RecordingSegmentStore* segment_store
 )
-    : stream_config_(std::move(stream_config)),
-      camera_id_(stream_config_.camera_id),
-      rtsp_uri_(stream_config_.rtsp_uri),
-      record_pattern_(stream_config_.record_pattern),
-      split_seconds_(stream_config_.split_seconds),
+    : camera_id_(std::move(camera_id)),
+      rtsp_uri_(std::move(rtsp_uri)),
+      record_pattern_(std::move(record_pattern)),
+      split_seconds_(split_seconds),
       segment_store_(segment_store) {}
 
 CameraPipeline::~CameraPipeline() {
@@ -97,11 +34,6 @@ CameraPipeline::~CameraPipeline() {
 bool CameraPipeline::create() {
     // 1. 기존 파이프라인 정리
     stop();
-
-    std::cout << "[" << camera_id_ << "] "
-              << "Create pipeline with recording stream config: "
-              << describe_recording_stream_config(stream_config_)
-              << std::endl;
 
     // 2. 파이프라인 생성
     pipeline_ = gst_pipeline_new("camera-record-appsink-pipeline");
@@ -532,7 +464,21 @@ void CameraPipeline::on_pad_added(
 }
 
 void CameraPipeline::handle_pad_added(GstPad* new_pad) {
-    // 1. 새 pad의 caps 확인
+    // 1. rtph264depay의 sink pad 가져오기
+    GstPad* sink_pad = gst_element_get_static_pad(depay_, "sink");
+
+    if (sink_pad == nullptr) {
+        std::cerr << "Failed to get depay sink pad" << std::endl;
+        return;
+    }
+
+    // 2. 이미 연결되어 있으면 무시
+    if (gst_pad_is_linked(sink_pad)) {
+        gst_object_unref(sink_pad);
+        return;
+    }
+
+    // 3. 새 pad의 caps 확인
     GstCaps* caps = gst_pad_get_current_caps(new_pad);
 
     if (caps == nullptr) {
@@ -540,143 +486,57 @@ void CameraPipeline::handle_pad_added(GstPad* new_pad) {
     }
 
     if (caps == nullptr || gst_caps_get_size(caps) == 0) {
-        std::cerr << "[" << camera_id_ << "] Failed to get new pad caps"
-                  << std::endl;
+        std::cerr << "Failed to get new pad caps" << std::endl;
 
         if (caps != nullptr) {
             gst_caps_unref(caps);
         }
 
+        gst_object_unref(sink_pad);
         return;
     }
 
-    // 2. caps 전체 출력
-    //    VMS에서는 선택한 녹화 설정과 실제 RTP 정보를 비교해야 하므로
-    //    현장 디버깅을 위해 caps 원문을 남겨두는 것이 좋다.
-    gchar* caps_text = gst_caps_to_string(caps);
-
-    std::cout << "[" << camera_id_ << "] New RTSP pad caps: "
-              << (caps_text ? caps_text : "unknown")
-              << std::endl;
-
-    if (caps_text != nullptr) {
-        g_free(caps_text);
-    }
-
-    // 3. RTP pad인지 확인
+    // 4. RTP pad인지 확인
     GstStructure* structure = gst_caps_get_structure(caps, 0);
     const gchar* pad_type = gst_structure_get_name(structure);
 
-    if (pad_type == nullptr ||
-        g_str_has_prefix(pad_type, "application/x-rtp") == FALSE) {
-        std::cout << "[" << camera_id_ << "] Ignore non-RTP pad. type="
-                  << (pad_type ? pad_type : "unknown")
-                  << std::endl;
-
+    if (g_str_has_prefix(pad_type, "application/x-rtp") == FALSE) {
         gst_caps_unref(caps);
+        gst_object_unref(sink_pad);
         return;
     }
 
-    // 4. video RTP인지 확인
-    //    카메라가 오디오 RTP pad도 만들 수 있으므로 media=video만 처리한다.
-    const gchar* media = gst_structure_get_string(structure, "media");
-
-    if (media == nullptr || g_ascii_strcasecmp(media, "video") != 0) {
-        std::cout << "[" << camera_id_ << "] Ignore non-video RTP pad. media="
-                  << (media ? media : "none")
-                  << std::endl;
-
-        gst_caps_unref(caps);
-        return;
-    }
-
-    // 5. RTP encoding-name 확인
-    //    이 값은 실제 스트림이 어떤 payload codec인지 알려주는 런타임 정보다.
+    // 5. H264 RTP인지 확인
     const gchar* encoding_name = gst_structure_get_string(
         structure,
         "encoding-name"
     );
 
-    const StreamCodecHint runtime_codec =
-        codec_hint_from_rtp_encoding_name(encoding_name);
-
-    std::cout << "[" << camera_id_ << "] Selected recording config codec hint: "
-              << stream_codec_hint_to_string(stream_config_.codec_hint)
-              << std::endl;
-
-    std::cout << "[" << camera_id_ << "] Runtime RTP encoding-name: "
+    std::cout << "RTP encoding-name: "
               << (encoding_name ? encoding_name : "none")
-              << " -> runtime codec="
-              << stream_codec_hint_to_string(runtime_codec)
               << std::endl;
 
-    // 6. VMS가 선택한 RecordingStreamConfig의 codec_hint와 실제 RTP codec 비교
-    if (stream_config_.codec_hint == StreamCodecHint::Unknown) {
-        std::cout << "[" << camera_id_ << "] Recording config codec hint is Unknown. "
-                  << "Runtime codec will be used for validation later."
-                  << std::endl;
-    } else if (runtime_codec == StreamCodecHint::Unknown) {
-        std::cout << "[" << camera_id_ << "] Warning: runtime RTP codec is Unknown. "
-                  << "encoding-name=" << (encoding_name ? encoding_name : "none")
-                  << std::endl;
-    } else if (codec_hint_matches(stream_config_.codec_hint, runtime_codec)) {
-        std::cout << "[" << camera_id_ << "] Runtime codec matches selected config"
-                  << std::endl;
-    } else {
-        std::cout << "[" << camera_id_ << "] Warning: recording config codec hint and RTP encoding-name mismatch. "
-                  << "configured="
-                  << stream_codec_hint_to_string(stream_config_.codec_hint)
-                  << ", runtime="
-                  << stream_codec_hint_to_string(runtime_codec)
-                  << std::endl;
-    }
-
-    // 7. 28강 시점의 실제 파이프라인은 아직 H264 고정이다.
-    //    H265/MJPEG/MPEG 계열은 감지와 검증만 하고, 실제 연결은 다음 단계에서 확장한다.
-    if (runtime_codec != StreamCodecHint::H264) {
-        std::cout << "[" << camera_id_ << "] Runtime codec is not H264. "
-                  << "This lesson still links only H264. Ignore this pad."
-                  << std::endl;
+    if (encoding_name == nullptr ||
+        g_ascii_strcasecmp(encoding_name, "H264") != 0) {
+        std::cout << "It is not H264 RTP. Ignore this pad." << std::endl;
 
         gst_caps_unref(caps);
-        return;
-    }
-
-    // 8. rtph264depay의 sink pad 가져오기
-    GstPad* sink_pad = gst_element_get_static_pad(depay_, "sink");
-
-    if (sink_pad == nullptr) {
-        std::cerr << "[" << camera_id_ << "] Failed to get depay sink pad"
-                  << std::endl;
-
-        gst_caps_unref(caps);
-        return;
-    }
-
-    // 9. 이미 연결되어 있으면 무시
-    if (gst_pad_is_linked(sink_pad)) {
-        std::cout << "[" << camera_id_ << "] Depay sink pad already linked. Ignore pad."
-                  << std::endl;
-
         gst_object_unref(sink_pad);
-        gst_caps_unref(caps);
         return;
     }
 
-    // 10. rtspsrc의 동적 pad를 rtph264depay에 연결
+    // 6. rtspsrc의 동적 pad를 rtph264depay에 연결
     GstPadLinkReturn ret = gst_pad_link(new_pad, sink_pad);
 
     if (GST_PAD_LINK_FAILED(ret)) {
-        std::cerr << "[" << camera_id_ << "] Failed to link rtspsrc dynamic pad"
-                  << std::endl;
+        std::cerr << "Failed to link rtspsrc dynamic pad" << std::endl;
     } else {
-        std::cout << "[" << camera_id_ << "] RTSP H264 dynamic pad linked successfully"
-                  << std::endl;
+        std::cout << "RTSP dynamic pad linked successfully" << std::endl;
     }
 
-    // 11. 참조 해제
-    gst_object_unref(sink_pad);
+    // 7. 참조 해제
     gst_caps_unref(caps);
+    gst_object_unref(sink_pad);
 }
 
 GstFlowReturn CameraPipeline::handle_new_sample(GstAppSink* appsink) {

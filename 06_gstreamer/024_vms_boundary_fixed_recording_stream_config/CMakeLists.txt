@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.20)
 
-project(024_vms_boundary_fixed_recording_stream_config LANGUAGES CXX)
+project(025_recording_engine_boundary_cleanup LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -18,8 +18,6 @@ add_executable(gst_basic
     CameraWorker.cpp
     CameraManager.cpp
     RecordingSegmentStore.cpp
-    RecordingStreamConfig.cpp
-    RecordingStreamSelector.cpp
 )
 
 target_include_directories(gst_basic PRIVATE

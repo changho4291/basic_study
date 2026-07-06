@@ -5,14 +5,14 @@
 #include <string>
 #include <thread>
 
-#include "RecordingStreamConfig.h"
 #include "RecordingSegmentStore.h"
 
 class CameraWorker {
 private:
-    RecordingStreamConfig stream_config_;
-
     std::string camera_id_;
+    std::string rtsp_uri_;
+    std::string record_pattern_;
+    int split_seconds_ = 5;
 
     RecordingSegmentStore* segment_store_ = nullptr;
 
@@ -21,7 +21,10 @@ private:
 
 public:
     CameraWorker(
-        RecordingStreamConfig stream_config,
+        std::string camera_id,
+        std::string rtsp_uri,
+        std::string record_pattern,
+        int split_seconds,
         RecordingSegmentStore* segment_store
     );
 

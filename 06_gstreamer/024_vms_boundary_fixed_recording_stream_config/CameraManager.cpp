@@ -6,7 +6,7 @@ CameraManager::~CameraManager() {
     stop_all();
 }
 
-bool CameraManager::add_camera(const RecordingStreamConfig& config) {
+bool CameraManager::add_camera(const CameraConfig& config) {
     // 1. 필수 값 확인
     if (config.camera_id.empty()) {
         std::cerr << "camera_id is empty" << std::endl;
@@ -23,16 +23,19 @@ bool CameraManager::add_camera(const RecordingStreamConfig& config) {
         return false;
     }
 
-    if (!config.record_enabled) {
-        std::cerr << "recording is disabled for stream: "
-                  << config.stream_id
-                  << std::endl;
+    if (config.split_seconds <= 0) {
+        std::cerr << "split_seconds must be positive" << std::endl;
         return false;
     }
 
     // 2. CameraWorker 생성
+    //    ONVIF profile token 같은 외부 식별자는 여기로 전달하지 않는다.
+    //    이 계층은 최종 RTSP URI를 받은 뒤 녹화만 담당한다.
     auto worker = std::make_unique<CameraWorker>(
-        config,
+        config.camera_id,
+        config.rtsp_uri,
+        config.record_pattern,
+        config.split_seconds,
         &segment_store_
     );
 
@@ -55,8 +58,10 @@ bool CameraManager::add_camera(const RecordingStreamConfig& config) {
 
         workers_.push_back(std::move(worker));
 
-        std::cout << "Added recording stream config: "
-                  << describe_recording_stream_config(config)
+        std::cout << "Added camera recording config: "
+                  << config.camera_id
+                  << ", rtsp_uri=" << config.rtsp_uri
+                  << ", split_seconds=" << config.split_seconds
                   << std::endl;
     }
 
