@@ -17,10 +17,7 @@ struct RelayFactoryLogContext {
     std::string output_url;
 };
 
-void destroy_relay_factory_log_context(
-    gpointer data,
-    GClosure* /*closure*/
-) {
+void destroy_relay_factory_log_context(gpointer data, GClosure* /*closure*/) {
     delete static_cast<RelayFactoryLogContext*>(data);
 }
 
@@ -136,7 +133,7 @@ bool RtspRelayServer::add_h264_camera(const CameraConfig& config) {
 
     gst_rtsp_media_factory_set_launch(factory, launch.c_str());
 
-    // 27강의 핵심 옵션이다.
+    // shared 옵션이다.
     // TRUE이면 같은 mount path의 여러 클라이언트가 같은 GstRTSPMedia를 공유한다.
     gst_rtsp_media_factory_set_shared(factory, TRUE);
 
@@ -163,7 +160,7 @@ bool RtspRelayServer::add_h264_camera(const CameraConfig& config) {
 
     mounted_paths_.push_back(mount_path);
 
-    std::cout << "RtspRelayServer: added H264 relay" << std::endl;
+    std::cout << "RtspRelayServer: added H264 relay mount" << std::endl;
     std::cout << "  camera_id: " << config.camera_id << std::endl;
     std::cout << "  input    : " << config.rtsp_uri << std::endl;
     std::cout << "  output   : " << output_url << std::endl;
@@ -171,6 +168,26 @@ bool RtspRelayServer::add_h264_camera(const CameraConfig& config) {
     std::cout << "  launch   : " << launch << std::endl;
 
     return true;
+}
+
+
+bool RtspRelayServer::add_h264_cameras(const std::vector<CameraConfig>& configs) {
+    if (configs.empty()) {
+        std::cerr << "RtspRelayServer: camera config list is empty" << std::endl;
+        return false;
+    }
+
+    bool ok = true;
+
+    for (const auto& config : configs) {
+        if (!add_h264_camera(config)) {
+            std::cerr << "RtspRelayServer: failed to add relay mount for camera_id="
+                      << config.camera_id << std::endl;
+            ok = false;
+        }
+    }
+
+    return ok;
 }
 
 bool RtspRelayServer::start() {
@@ -264,6 +281,23 @@ std::string RtspRelayServer::make_mount_path(const std::string& camera_id) const
 
 std::string RtspRelayServer::make_local_url(const std::string& camera_id) const {
     return "rtsp://127.0.0.1:" + service_ + make_mount_path(camera_id);
+}
+
+
+void RtspRelayServer::print_mounted_urls() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+
+    std::cout << "===== RTSP Relay URLs =====" << std::endl;
+
+    if (mounted_paths_.empty()) {
+        std::cout << "No RTSP relay mount points registered" << std::endl;
+    }
+
+    for (const auto& path : mounted_paths_) {
+        std::cout << "rtsp://127.0.0.1:" << service_ << path << std::endl;
+    }
+
+    std::cout << "===========================" << std::endl;
 }
 
 bool RtspRelayServer::ensure_server_created_locked() {
