@@ -1,0 +1,36 @@
+cmake_minimum_required(VERSION 3.20)
+
+project(035_hls_vod_single_ts_conversion LANGUAGES CXX)
+
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+find_package(PkgConfig REQUIRED)
+
+pkg_check_modules(GSTREAMER REQUIRED IMPORTED_TARGET 
+    gstreamer-1.0
+    gstreamer-app-1.0
+    gstreamer-rtsp-server-1.0
+)
+
+add_executable(gst_basic
+    main.cpp
+    CameraPipeline.cpp
+    CameraWorker.cpp
+    CameraManager.cpp
+    RecordingSegmentStore.cpp
+    PlaybackService.cpp
+    HlsVodSession.cpp
+    HlsVodPlaylistBuilder.cpp
+    HlsVodConverter.cpp
+    RtspRelayServer.cpp
+)
+
+target_include_directories(gst_basic PRIVATE
+    ${CMAKE_SOURCE_DIR}
+)
+
+target_link_libraries(gst_basic
+    PRIVATE
+        PkgConfig::GSTREAMER
+)

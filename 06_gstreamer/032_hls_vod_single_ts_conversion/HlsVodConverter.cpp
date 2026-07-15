@@ -1,0 +1,365 @@
+#include "HlsVodConverter.h"
+
+#include <gst/gst.h>
+
+#include <filesystem>
+#include <iostream>
+#include <sstream>
+#include <system_error>
+
+namespace {
+
+struct QtdemuxLinkContext {
+    GstElement* queue = nullptr;
+    bool linked = false;
+    std::string error_message;
+};
+
+std::string gst_error_to_string(GError* error, gchar* debug_info) {
+    std::ostringstream oss;
+
+    if (error != nullptr) {
+        oss << error->message;
+    } else {
+        oss << "unknown GStreamer error";
+    }
+
+    if (debug_info != nullptr) {
+        oss << " debug=" << debug_info;
+    }
+
+    return oss.str();
+}
+
+bool caps_is_h264_video(GstCaps* caps) {
+    if (caps == nullptr || gst_caps_is_empty(caps)) {
+        return false;
+    }
+
+    GstStructure* structure = gst_caps_get_structure(caps, 0);
+    if (structure == nullptr) {
+        return false;
+    }
+
+    const char* name = gst_structure_get_name(structure);
+    if (name == nullptr) {
+        return false;
+    }
+
+    return std::string(name) == "video/x-h264";
+}
+
+void on_qtdemux_pad_added(
+    GstElement* /*demux*/,
+    GstPad* new_pad,
+    gpointer user_data
+) {
+    auto* context = static_cast<QtdemuxLinkContext*>(user_data);
+
+    if (context == nullptr || context->queue == nullptr) {
+        return;
+    }
+
+    if (context->linked) {
+        return;
+    }
+
+    GstCaps* caps = gst_pad_get_current_caps(new_pad);
+    if (caps == nullptr) {
+        caps = gst_pad_query_caps(new_pad, nullptr);
+    }
+
+    const bool is_h264 = caps_is_h264_video(caps);
+    if (caps != nullptr) {
+        gst_caps_unref(caps);
+    }
+
+    if (!is_h264) {
+        return;
+    }
+
+    GstPad* sink_pad = gst_element_get_static_pad(context->queue, "sink");
+    if (sink_pad == nullptr) {
+        context->error_message = "failed to get queue sink pad";
+        return;
+    }
+
+    if (gst_pad_is_linked(sink_pad)) {
+        context->linked = true;
+        gst_object_unref(sink_pad);
+        return;
+    }
+
+    const GstPadLinkReturn link_result = gst_pad_link(new_pad, sink_pad);
+    gst_object_unref(sink_pad);
+
+    if (GST_PAD_LINK_FAILED(link_result)) {
+        std::ostringstream oss;
+        oss << "failed to link qtdemux h264 pad to queue. code="
+            << static_cast<int>(link_result);
+        context->error_message = oss.str();
+        return;
+    }
+
+    context->linked = true;
+}
+
+} // namespace
+
+HlsVodConvertResult HlsVodConverter::convert_first_segment(
+    const HlsVodSession& session
+) const {
+    if (session.segments.empty()) {
+        HlsVodConvertResult result;
+        result.ok = false;
+        result.error_message = "HLS VOD session has no segment plans";
+        return result;
+    }
+
+    return convert_segment_to_ts(session.segments.front());
+}
+
+HlsVodConvertResult HlsVodConverter::validate_segment(
+    const HlsVodSegment& segment
+) const {
+    HlsVodConvertResult result;
+    result.sequence_no = segment.sequence_no;
+    result.source_file_path = segment.source_file_path;
+    result.output_file_path = segment.output_file_path;
+    result.source_offset_ms = segment.source_offset_ms;
+    result.requested_duration_ms = segment.duration_ms;
+
+    if (segment.source_file_path.empty()) {
+        result.ok = false;
+        result.error_message = "source_file_path is empty";
+        return result;
+    }
+
+    if (segment.output_file_path.empty()) {
+        result.ok = false;
+        result.error_message = "output_file_path is empty";
+        return result;
+    }
+
+    if (!std::filesystem::exists(segment.source_file_path)) {
+        result.ok = false;
+        result.error_message = "source MP4 file does not exist: " + segment.source_file_path;
+        return result;
+    }
+
+    if (segment.duration_ms <= 0) {
+        result.ok = false;
+        result.error_message = "segment duration must be positive";
+        return result;
+    }
+
+    result.ok = true;
+    return result;
+}
+
+HlsVodConvertResult HlsVodConverter::convert_segment_to_ts(
+    const HlsVodSegment& segment
+) const {
+    // 1. 입력/출력 경로 검증
+    auto validation = validate_segment(segment);
+    if (!validation.ok) {
+        return validation;
+    }
+
+    // 2. 출력 디렉터리 생성
+    const auto output_parent = segment.output_file_path.parent_path();
+    if (!output_parent.empty()) {
+        std::error_code error;
+        std::filesystem::create_directories(output_parent, error);
+        if (error) {
+            HlsVodConvertResult result = validation;
+            result.ok = false;
+            result.error_message = "failed to create output directory: " + error.message();
+            return result;
+        }
+    }
+
+    // 3. GStreamer element 생성
+    GstElement* pipeline = gst_pipeline_new("hls-vod-mp4-to-ts-pipeline");
+    GstElement* filesrc = gst_element_factory_make("filesrc", "source");
+    GstElement* demux = gst_element_factory_make("qtdemux", "demux");
+    GstElement* queue = gst_element_factory_make("queue", "video-queue");
+    GstElement* h264parse = gst_element_factory_make("h264parse", "h264-parser");
+    GstElement* capsfilter = gst_element_factory_make("capsfilter", "h264-capsfilter");
+    GstElement* mux = gst_element_factory_make("mpegtsmux", "ts-muxer");
+    GstElement* filesink = gst_element_factory_make("filesink", "sink");
+
+    if (pipeline == nullptr || filesrc == nullptr || demux == nullptr ||
+        queue == nullptr || h264parse == nullptr || capsfilter == nullptr ||
+        mux == nullptr || filesink == nullptr) {
+        if (pipeline != nullptr) {
+            gst_object_unref(pipeline);
+        }
+
+        HlsVodConvertResult result = validation;
+        result.ok = false;
+        result.error_message =
+            "failed to create one or more GStreamer elements. "
+            "Required elements: filesrc, qtdemux, queue, h264parse, capsfilter, mpegtsmux, filesink";
+        return result;
+    }
+
+    // 4. element property 설정
+    g_object_set(filesrc, "location", segment.source_file_path.c_str(), nullptr);
+    g_object_set(filesink, "location", segment.output_file_path.string().c_str(), nullptr);
+    g_object_set(filesink, "sync", FALSE, nullptr);
+
+    // MPEG-TS 안의 H264는 byte-stream/AU 정렬 형태가 다루기 쉽다.
+    g_object_set(h264parse, "config-interval", -1, nullptr);
+
+    GstCaps* h264_caps = gst_caps_from_string(
+        "video/x-h264,stream-format=byte-stream,alignment=au"
+    );
+    g_object_set(capsfilter, "caps", h264_caps, nullptr);
+    gst_caps_unref(h264_caps);
+
+    gst_bin_add_many(
+        GST_BIN(pipeline),
+        filesrc,
+        demux,
+        queue,
+        h264parse,
+        capsfilter,
+        mux,
+        filesink,
+        nullptr
+    );
+
+    if (!gst_element_link(filesrc, demux)) {
+        gst_object_unref(pipeline);
+
+        HlsVodConvertResult result = validation;
+        result.ok = false;
+        result.error_message = "failed to link filesrc -> qtdemux";
+        return result;
+    }
+
+    if (!gst_element_link_many(queue, h264parse, capsfilter, mux, filesink, nullptr)) {
+        gst_object_unref(pipeline);
+
+        HlsVodConvertResult result = validation;
+        result.ok = false;
+        result.error_message = "failed to link queue -> h264parse -> capsfilter -> mpegtsmux -> filesink";
+        return result;
+    }
+
+    // qtdemux의 video pad는 동적으로 생성되므로 pad-added에서 queue와 연결한다.
+    QtdemuxLinkContext link_context;
+    link_context.queue = queue;
+    g_signal_connect(demux, "pad-added", G_CALLBACK(on_qtdemux_pad_added), &link_context);
+
+    // 5. pipeline 실행 후 EOS까지 대기
+    GstBus* bus = gst_element_get_bus(pipeline);
+    gst_element_set_state(pipeline, GST_STATE_PLAYING);
+
+    bool done = false;
+    bool ok = false;
+    std::string error_message;
+
+    while (!done) {
+        GstMessage* message = gst_bus_timed_pop_filtered(
+            bus,
+            GST_CLOCK_TIME_NONE,
+            static_cast<GstMessageType>(GST_MESSAGE_ERROR | GST_MESSAGE_EOS)
+        );
+
+        if (message == nullptr) {
+            continue;
+        }
+
+        switch (GST_MESSAGE_TYPE(message)) {
+            case GST_MESSAGE_ERROR: {
+                GError* error = nullptr;
+                gchar* debug_info = nullptr;
+                gst_message_parse_error(message, &error, &debug_info);
+
+                error_message = gst_error_to_string(error, debug_info);
+
+                if (error != nullptr) {
+                    g_error_free(error);
+                }
+                if (debug_info != nullptr) {
+                    g_free(debug_info);
+                }
+
+                done = true;
+                ok = false;
+                break;
+            }
+
+            case GST_MESSAGE_EOS:
+                done = true;
+                ok = true;
+                break;
+
+            default:
+                break;
+        }
+
+        gst_message_unref(message);
+    }
+
+    gst_element_set_state(pipeline, GST_STATE_NULL);
+    gst_object_unref(bus);
+    gst_object_unref(pipeline);
+
+    if (!link_context.error_message.empty()) {
+        HlsVodConvertResult result = validation;
+        result.ok = false;
+        result.error_message = link_context.error_message;
+        return result;
+    }
+
+    if (!link_context.linked) {
+        HlsVodConvertResult result = validation;
+        result.ok = false;
+        result.error_message = "qtdemux did not expose a video/x-h264 pad";
+        return result;
+    }
+
+    if (!ok) {
+        HlsVodConvertResult result = validation;
+        result.ok = false;
+        result.error_message = error_message.empty()
+            ? "GStreamer conversion failed"
+            : error_message;
+        return result;
+    }
+
+    if (!std::filesystem::exists(segment.output_file_path)) {
+        HlsVodConvertResult result = validation;
+        result.ok = false;
+        result.error_message = "conversion finished but output TS file was not created";
+        return result;
+    }
+
+    HlsVodConvertResult result = validation;
+    result.ok = true;
+    result.trim_applied = false;
+    return result;
+}
+
+void HlsVodConverter::print_convert_result(
+    const HlsVodConvertResult& result
+) {
+    std::cout << std::endl;
+    std::cout << "===== HlsVodConvertResult =====" << std::endl;
+    std::cout << "ok=" << (result.ok ? "true" : "false") << std::endl;
+    std::cout << "sequence_no=" << result.sequence_no << std::endl;
+    std::cout << "source_file_path=" << result.source_file_path.string() << std::endl;
+    std::cout << "output_file_path=" << result.output_file_path.string() << std::endl;
+    std::cout << "source_offset_ms=" << result.source_offset_ms << std::endl;
+    std::cout << "requested_duration_ms=" << result.requested_duration_ms << std::endl;
+    std::cout << "trim_applied=" << (result.trim_applied ? "true" : "false") << std::endl;
+
+    if (!result.ok) {
+        std::cout << "error=" << result.error_message << std::endl;
+    }
+
+    std::cout << "================================" << std::endl;
+}
